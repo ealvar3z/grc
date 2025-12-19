@@ -28,10 +28,17 @@ const (
 	KBackquote
 )
 
+// Pos tracks a source position.
+type Pos struct {
+	Line int
+	Col  int
+}
+
 // Node is a minimal AST node.
 type Node struct {
 	Kind        Kind
 	Tok         string
+	Pos         Pos
 	Left, Right *Node
 	List        []*Node
 }
