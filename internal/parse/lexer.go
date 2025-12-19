@@ -61,15 +61,25 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			}
 			lval.node = &Node{Kind: KRedir, Tok: ">", Pos: Pos{Line: line, Col: col}}
 			return REDIR
-		case '<':
-			if lx.consumeIf('>') {
-				lval.node = &Node{Kind: KRedir, Tok: "<>", Pos: Pos{Line: line, Col: col}}
-				return REDIR
-			}
-			lval.node = &Node{Kind: KRedir, Tok: "<", Pos: Pos{Line: line, Col: col}}
+	case '<':
+		if lx.consumeIf('>') {
+			lval.node = &Node{Kind: KRedir, Tok: "<>", Pos: Pos{Line: line, Col: col}}
 			return REDIR
-		case ';', '(', ')', '{', '}', '=', '^', '$', '"', '`':
-			return int(r)
+		}
+		lval.node = &Node{Kind: KRedir, Tok: "<", Pos: Pos{Line: line, Col: col}}
+		return REDIR
+	case '\'':
+		text, ok := lx.readSingleQuoted()
+		if !ok {
+			lx.Error("unterminated quote")
+			return 0
+		}
+		node := W(text)
+		node.Pos = Pos{Line: line, Col: col}
+		lval.node = node
+		return WORD
+	case ';', '(', ')', '{', '}', '=', '^', '$', '"', '`':
+		return int(r)
 		default:
 			word := lx.readWordTail(r)
 			if word == "" {
@@ -133,7 +143,7 @@ func (lx *Lexer) readWordTail(first rune) string {
 
 func isWordBreak(r rune) bool {
 	switch r {
-	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '`', '<', '>':
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>':
 		return true
 	default:
 		return false
@@ -193,4 +203,18 @@ func (lx *Lexer) readRawRune() lexRune {
 
 func redirwToken() int {
 	return REDIR
+}
+
+func (lx *Lexer) readSingleQuoted() (string, bool) {
+	var b strings.Builder
+	for {
+		r, _, _, err := lx.readRune()
+		if err != nil {
+			return "", false
+		}
+		if r == '\'' {
+			return b.String(), true
+		}
+		b.WriteRune(r)
+	}
 }

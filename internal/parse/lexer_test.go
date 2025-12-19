@@ -100,3 +100,14 @@ func TestLexerKeywords(t *testing.T) {
 	}
 	assertTokens(t, input, want)
 }
+
+func TestLexerSingleQuoted(t *testing.T) {
+	input := "echo 'a b; c' x\n"
+	want := []tokPair{
+		{tok: WORD, text: "echo", hasText: true},
+		{tok: WORD, text: "a b; c", hasText: true},
+		{tok: WORD, text: "x", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
