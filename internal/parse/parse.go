@@ -1,12 +1,25 @@
 package parse
 
-import "io"
+import (
+	"fmt"
+	"io"
+)
 
-// Parse reads all input and returns a placeholder AST.
-func Parse(r io.Reader) (*File, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
+// Parse reads input and returns the parsed AST.
+func Parse(rd io.Reader) (*Node, error) {
+	lx := NewLexer(rd)
+	parseResult = nil
+	if grcParse(lx) != 0 && parseResult == nil {
+		if lx.Err != nil {
+			return nil, lx.Err
+		}
+		return nil, fmt.Errorf("parse error")
 	}
-	return &File{Text: string(data)}, nil
+	if lx.Err != nil {
+		return nil, lx.Err
+	}
+	if parseResult == nil {
+		return nil, fmt.Errorf("parse error")
+	}
+	return parseResult, nil
 }
