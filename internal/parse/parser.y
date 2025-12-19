@@ -16,7 +16,7 @@ var parseResult *Node
 
 var lastword int
 %}
-%union{
+%union {
 	node *Node
 	str  string
 }
