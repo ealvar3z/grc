@@ -27,6 +27,49 @@ func TestParseReadsInput(t *testing.T) {
 	}
 }
 
+func TestParseQuotedArg(t *testing.T) {
+	input := "echo 'a b' x\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	words := collectWords(node)
+	if len(words) < 3 || words[0] != "echo" || words[1] != "a b" || words[2] != "x" {
+		t.Fatalf("expected words [echo a b x], got %v", words)
+	}
+}
+
+func TestParseSequence(t *testing.T) {
+	input := "a;b\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	if node.Kind != KSeq || node.Left == nil || node.Right == nil {
+		t.Fatalf("expected sequence node, got %#v", node)
+	}
+}
+
+func TestParsePipe(t *testing.T) {
+	input := "a|b\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	if node.Kind != KPipe {
+		t.Fatalf("expected pipe node, got %#v", node)
+	}
+}
+
 func collectWords(n *Node) []string {
 	if n == nil {
 		return nil
