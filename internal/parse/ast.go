@@ -48,9 +48,28 @@ func W(s string) *Node {
 
 // L constructs or appends to a list node.
 func L(k Kind, xs ...*Node) *Node {
-	n := &Node{Kind: k}
-	n.List = append(n.List, xs...)
-	return n
+	var out *Node
+	for _, n := range xs {
+		if n == nil {
+			continue
+		}
+		if out == nil {
+			if n.Kind == k && len(n.List) > 0 {
+				out = n
+				continue
+			}
+			out = &Node{Kind: k}
+		}
+		if n.Kind == k && len(n.List) > 0 {
+			out.List = append(out.List, n.List...)
+			continue
+		}
+		out.List = append(out.List, n)
+	}
+	if out == nil {
+		out = &Node{Kind: k}
+	}
+	return out
 }
 
 // File is a minimal AST root placeholder until the real grammar is wired in.
