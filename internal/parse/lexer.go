@@ -14,6 +14,7 @@ type Lexer struct {
 
 	line int
 	col  int
+	eof  bool
 
 	peeked bool
 	peek   lexRune
@@ -249,6 +250,9 @@ func (lx *Lexer) peekRune() (rune, int, int, error) {
 func (lx *Lexer) readRawRune() lexRune {
 	r, _, err := lx.r.ReadRune()
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			lx.eof = true
+		}
 		return lexRune{r: 0, err: err, line: lx.line, col: lx.col, nextLine: lx.line, nextCol: lx.col}
 	}
 	line := lx.line
@@ -274,6 +278,11 @@ func (lx *Lexer) readSingleQuoted() (string, bool) {
 		}
 		b.WriteRune(r)
 	}
+}
+
+// EOF reports whether the lexer has reached end of input.
+func (lx *Lexer) EOF() bool {
+	return lx.eof
 }
 
 func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {

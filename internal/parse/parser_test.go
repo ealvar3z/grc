@@ -94,6 +94,25 @@ func TestParseConcat(t *testing.T) {
 	}
 }
 
+func TestParseAllMultiline(t *testing.T) {
+	input := "echo a\n echo b\n"
+	node, err := ParseAll(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	kinds := KindsPreorder(node)
+	if countKind(kinds, KSeq) == 0 {
+		t.Fatalf("expected KSeq in preorder kinds, got %v", kinds)
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "a", "echo", "b"}) {
+		t.Fatalf("expected words [echo a echo b] in order, got %v", words)
+	}
+}
+
 func TestParseRedirOutSpaced(t *testing.T) {
 	input := "echo hi > out\n"
 	node, err := Parse(strings.NewReader(input))

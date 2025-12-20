@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	ast, err := parse.Parse(os.Stdin)
+	ast, err := parse.ParseAll(os.Stdin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

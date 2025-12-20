@@ -14,8 +14,8 @@ func TestFnDefineAndCall(t *testing.T) {
 		t.Skip("printf not available")
 	}
 	env := NewEnv(nil)
-	input := "fn f { printf hi }; f\n"
-	ast, err := parse.Parse(strings.NewReader(input))
+	input := "fn f { printf hi }\n f\n"
+	ast, err := parse.ParseAll(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -42,8 +42,8 @@ func TestFnArgsAndConcat(t *testing.T) {
 		t.Skip("printf not available")
 	}
 	env := NewEnv(nil)
-	input := "fn f { printf %s $1^$2 }; f a b\n"
-	ast, err := parse.Parse(strings.NewReader(input))
+	input := "fn f { printf %s $1^$2 }\n f a b\n"
+	ast, err := parse.ParseAll(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -66,8 +66,8 @@ func TestFnStarArgs(t *testing.T) {
 		t.Skip("printf not available")
 	}
 	env := NewEnv(nil)
-	input := "fn f { printf %s $* }; f a b\n"
-	ast, err := parse.Parse(strings.NewReader(input))
+	input := "fn f { printf %s $* }\n f a b\n"
+	ast, err := parse.ParseAll(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -91,8 +91,8 @@ func TestFnDynamicScope(t *testing.T) {
 	}
 	env := NewEnv(nil)
 	env.Set1("x", "world")
-	input := "fn f { printf %s $x }; f\n"
-	ast, err := parse.Parse(strings.NewReader(input))
+	input := "fn f { printf %s $x }\n f\n"
+	ast, err := parse.ParseAll(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
