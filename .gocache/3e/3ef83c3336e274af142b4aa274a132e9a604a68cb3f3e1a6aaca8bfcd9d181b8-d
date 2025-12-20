@@ -1,4 +1,0 @@
-./ast.go
-./lexer.go
-./parse.go
-./parser.go
