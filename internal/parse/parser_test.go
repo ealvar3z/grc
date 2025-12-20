@@ -75,6 +75,25 @@ func TestParsePipe(t *testing.T) {
 	}
 }
 
+func TestParseConcat(t *testing.T) {
+	input := "echo a^b\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	kinds := KindsPreorder(node)
+	if countKind(kinds, KConcat) == 0 {
+		t.Fatalf("expected KConcat in preorder kinds, got %v", kinds)
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "a", "b"}) {
+		t.Fatalf("expected words [echo a b] in order, got %v", words)
+	}
+}
+
 func isSubsequence(haystack, needle []string) bool {
 	if len(needle) == 0 {
 		return true
