@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -9,6 +10,9 @@ import (
 )
 
 func main() {
+	trace := flag.Bool("x", false, "trace commands")
+	flag.Parse()
+
 	ast, err := parse.ParseAll(os.Stdin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -20,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	runner := &eval.Runner{Env: env}
+	runner := &eval.Runner{Env: env, Trace: *trace, TraceWriter: os.Stderr}
 	result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
 	if runner.ExitRequested() {
 		os.Exit(runner.ExitCode())
