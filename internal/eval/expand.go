@@ -1,0 +1,82 @@
+package eval
+
+import (
+	"fmt"
+
+	"grc/internal/parse"
+)
+
+// ExpandWord expands a word node into a list of strings.
+func ExpandWord(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
+	switch n.Kind {
+	case parse.KWord:
+		return []string{n.Tok}, nil
+	case parse.KConcat:
+		left, err := ExpandWord(n.Left, env)
+		if err != nil {
+			return nil, err
+		}
+		right, err := ExpandWord(n.Right, env)
+		if err != nil {
+			return nil, err
+		}
+		return concatProduct(left, right), nil
+	case parse.KDollar:
+		name := ""
+		if n.Left != nil {
+			name = n.Left.Tok
+		}
+		return env.Get(name), nil
+	default:
+		return nil, fmt.Errorf("unsupported word node: %v", n.Kind)
+	}
+}
+
+// ExpandCall flattens a call node into an argv list.
+func ExpandCall(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
+	if n.Kind != parse.KCall {
+		return nil, fmt.Errorf("expected call node, got %v", n.Kind)
+	}
+	return expandArgs(n.Left, env)
+}
+
+func expandArgs(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
+	if n.Kind == parse.KArgList || n.Kind == parse.KWords {
+		var out []string
+		for _, child := range n.List {
+			vals, err := expandArgs(child, env)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, vals...)
+		}
+		return out, nil
+	}
+	vals, err := ExpandWord(n, env)
+	if err != nil {
+		return nil, err
+	}
+	return vals, nil
+}
+
+func concatProduct(left, right []string) []string {
+	if len(left) == 0 || len(right) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(left)*len(right))
+	for _, l := range left {
+		for _, r := range right {
+			out = append(out, l+r)
+		}
+	}
+	return out
+}

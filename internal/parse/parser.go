@@ -715,7 +715,7 @@ grcdefault:
 		grcDollar = grcS[grcpt-1 : grcpt+1]
 //line internal/parse/parser.y:58
 		{
-			grcVAL.node = N(KCall, grcDollar[1].node, nil)
+			grcVAL.node = buildCallFromSimple(grcDollar[1].node)
 		}
 	case 27:
 		grcDollar = grcS[grcpt-3 : grcpt+1]

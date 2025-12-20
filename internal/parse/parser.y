@@ -55,7 +55,7 @@ cmd:				{$$=nil;}
 				{$$=N(Kind(WHILE), $2, $3);}
 |	SWITCH word brace
 				{$$=N(KSwitch, $2, $3);}
-|	simple			{$$=N(KCall, $1, nil);}
+|	simple			{$$=buildCallFromSimple($1);}
 |	TWIDDLE word words	{$$=N(Kind(TWIDDLE), $2, $3);}
 |	cmd ANDAND cmd		{$$=N(KAnd, $1, $3);}
 |	cmd OROR cmd		{$$=N(KOr, $1, $3);}
