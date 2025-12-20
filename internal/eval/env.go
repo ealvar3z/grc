@@ -36,6 +36,11 @@ func (e *Env) Set(name string, vals []string) {
 	e.vars[name] = vals
 }
 
+// Set1 assigns a single value to the variable.
+func (e *Env) Set1(name, value string) {
+	e.Set(name, []string{value})
+}
+
 // Unset removes a variable from the current environment.
 func (e *Env) Unset(name string) {
 	if e == nil || e.vars == nil {

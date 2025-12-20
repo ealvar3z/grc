@@ -130,6 +130,79 @@ func TestRunAndOr(t *testing.T) {
 	}
 }
 
+func TestRunDollarSingle(t *testing.T) {
+	if !haveCmd(t, "printf") {
+		t.Skip("printf not available")
+	}
+	env := NewEnv(nil)
+	env.Set1("x", "hi")
+	ast, err := parse.Parse(strings.NewReader("printf %s $x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	var out bytes.Buffer
+	res := (&Runner{Env: env}).RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+	if res.Status != 0 {
+		t.Fatalf("expected status 0, got %d", res.Status)
+	}
+	if out.String() != "hi" {
+		t.Fatalf("unexpected stdout: %q", out.String())
+	}
+}
+
+func TestRunDollarListArgs(t *testing.T) {
+	if !haveCmd(t, "printf") {
+		t.Skip("printf not available")
+	}
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
+	ast, err := parse.Parse(strings.NewReader("printf %s $x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	var out bytes.Buffer
+	res := (&Runner{Env: env}).RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+	if res.Status != 0 {
+		t.Fatalf("expected status 0, got %d", res.Status)
+	}
+	if out.String() != "ab" {
+		t.Fatalf("unexpected stdout: %q", out.String())
+	}
+}
+
+func TestRunDollarConcat(t *testing.T) {
+	if !haveCmd(t, "printf") {
+		t.Skip("printf not available")
+	}
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
+	env.Set("y", []string{"1", "2"})
+	ast, err := parse.Parse(strings.NewReader("printf %s $x^y\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	var out bytes.Buffer
+	res := (&Runner{Env: env}).RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+	if res.Status != 0 {
+		t.Fatalf("expected status 0, got %d", res.Status)
+	}
+	if out.String() != "a1a2b1b2" {
+		t.Fatalf("unexpected stdout: %q", out.String())
+	}
+}
+
 func haveCmd(t *testing.T, name string) bool {
 	_, err := exec.LookPath(name)
 	if err != nil {

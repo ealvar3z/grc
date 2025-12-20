@@ -25,11 +25,14 @@ func ExpandWord(n *parse.Node, env *Env) ([]string, error) {
 		}
 		return concatProduct(left, right), nil
 	case parse.KDollar:
-		name := ""
-		if n.Left != nil {
-			name = n.Left.Tok
+		if n.Left == nil || n.Left.Kind != parse.KWord {
+			return nil, fmt.Errorf("unsupported dollar node")
 		}
-		return env.Get(name), nil
+		vals := env.Get(n.Left.Tok)
+		if vals == nil {
+			return []string{}, nil
+		}
+		return vals, nil
 	default:
 		return nil, fmt.Errorf("unsupported word node: %v", n.Kind)
 	}
@@ -70,7 +73,7 @@ func expandArgs(n *parse.Node, env *Env) ([]string, error) {
 
 func concatProduct(left, right []string) []string {
 	if len(left) == 0 || len(right) == 0 {
-		return nil
+		return []string{}
 	}
 	out := make([]string, 0, len(left)*len(right))
 	for _, l := range left {

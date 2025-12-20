@@ -34,3 +34,12 @@ func buildCallFromSimple(n *Node) *Node {
 	}
 	return call
 }
+
+// concatNode builds a concat node, promoting a bare word to KDollar when
+// concatenating with a dollar expansion to match rc-style $x^y expectations.
+func concatNode(a, b *Node) *Node {
+	if a != nil && a.Kind == KDollar && b != nil && b.Kind == KWord {
+		b = N(KDollar, b, nil)
+	}
+	return N(KConcat, a, b)
+}

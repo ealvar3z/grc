@@ -84,6 +84,61 @@ func TestPlanPipe(t *testing.T) {
 	}
 }
 
+func TestPlanDollarSingle(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"hi"})
+	ast, err := parse.Parse(strings.NewReader("echo $x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if len(plan.Argv) != 2 || plan.Argv[0] != "echo" || plan.Argv[1] != "hi" {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+}
+
+func TestPlanDollarList(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
+	ast, err := parse.Parse(strings.NewReader("echo $x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if len(plan.Argv) != 3 || plan.Argv[0] != "echo" || plan.Argv[1] != "a" || plan.Argv[2] != "b" {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+}
+
+func TestPlanDollarConcat(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
+	env.Set("y", []string{"1", "2"})
+	ast, err := parse.Parse(strings.NewReader("echo $x^y\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	want := []string{"echo", "a1", "a2", "b1", "b2"}
+	if len(plan.Argv) != len(want) {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+	for i := range want {
+		if plan.Argv[i] != want[i] {
+			t.Fatalf("unexpected argv: %v", plan.Argv)
+		}
+	}
+}
+
 func TestPlanSeq(t *testing.T) {
 	ast, err := parse.Parse(strings.NewReader("a;b\n"))
 	if err != nil {
