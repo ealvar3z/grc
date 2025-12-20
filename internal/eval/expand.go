@@ -1,7 +1,9 @@
 package eval
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -51,6 +53,26 @@ func expandWordBase(n *parse.Node, env *Env) ([]string, error) {
 			return []string{}, nil
 		}
 		return vals, nil
+	case parse.KBackquote:
+		if env == nil {
+			env = NewEnv(nil)
+		}
+		child := NewChild(env)
+		plan, err := BuildPlan(n.Left, child)
+		if err != nil {
+			return nil, err
+		}
+		var out bytes.Buffer
+		runner := &Runner{Env: child}
+		res := runner.RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+		if env != nil {
+			env.SetStatus(res.Status)
+		}
+		fields := strings.Fields(out.String())
+		if len(fields) == 0 {
+			return []string{}, nil
+		}
+		return fields, nil
 	default:
 		return nil, fmt.Errorf("unsupported word node: %v", n.Kind)
 	}
