@@ -70,10 +70,10 @@ simple:	first
 |	simple word		{$$=L(KArgList, $1, $2);}
 |	simple redir		{$$=L(KArgList, $1, $2);}
 first:	comword
-|	first '^' word		{$$=concatNode($1, $3);}
+|	first '^' word		{$$=N(KConcat, $1, $3);}
 word:	keyword			{lastword=1; $$=$1; if $$ != nil { $$.Kind = KWord; }}
 |	comword
-|	word '^' word		{$$=concatNode($1, $3);}
+|	word '^' word		{$$=N(KConcat, $1, $3);}
 comword: '$' word		{$$=N(KDollar, $2, nil);}
 |	'$' word SUB words ')'	{$$=N(KSub, $2, $4);}
 |	'"' word		{$$=N(KQuote, $2, nil);}

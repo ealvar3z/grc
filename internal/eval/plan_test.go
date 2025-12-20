@@ -116,10 +116,32 @@ func TestPlanDollarList(t *testing.T) {
 	}
 }
 
-func TestPlanDollarConcat(t *testing.T) {
+func TestPlanDollarConcatTwoVars(t *testing.T) {
 	env := NewEnv(nil)
 	env.Set("x", []string{"a", "b"})
 	env.Set("y", []string{"1", "2"})
+	ast, err := parse.Parse(strings.NewReader("echo $x^$y\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	want := []string{"echo", "a1", "b2"}
+	if len(plan.Argv) != len(want) {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+	for i := range want {
+		if plan.Argv[i] != want[i] {
+			t.Fatalf("unexpected argv: %v", plan.Argv)
+		}
+	}
+}
+
+func TestPlanDollarConcatVarAndLiteral(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
 	ast, err := parse.Parse(strings.NewReader("echo $x^y\n"))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
@@ -128,7 +150,7 @@ func TestPlanDollarConcat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan returned error: %v", err)
 	}
-	want := []string{"echo", "a1", "a2", "b1", "b2"}
+	want := []string{"echo", "ay", "by"}
 	if len(plan.Argv) != len(want) {
 		t.Fatalf("unexpected argv: %v", plan.Argv)
 	}

@@ -23,7 +23,11 @@ func ExpandWord(n *parse.Node, env *Env) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		return concatProduct(left, right), nil
+		out := concatProduct(left, right)
+		if out == nil {
+			return nil, fmt.Errorf("concat length mismatch")
+		}
+		return out, nil
 	case parse.KDollar:
 		if n.Left == nil || n.Left.Kind != parse.KWord {
 			return nil, fmt.Errorf("unsupported dollar node")
@@ -75,11 +79,26 @@ func concatProduct(left, right []string) []string {
 	if len(left) == 0 || len(right) == 0 {
 		return []string{}
 	}
-	out := make([]string, 0, len(left)*len(right))
-	for _, l := range left {
-		for _, r := range right {
-			out = append(out, l+r)
+	if len(left) == len(right) {
+		out := make([]string, 0, len(left))
+		for i := range left {
+			out = append(out, left[i]+right[i])
 		}
+		return out
 	}
-	return out
+	if len(left) == 1 {
+		out := make([]string, 0, len(right))
+		for _, r := range right {
+			out = append(out, left[0]+r)
+		}
+		return out
+	}
+	if len(right) == 1 {
+		out := make([]string, 0, len(left))
+		for _, l := range left {
+			out = append(out, l+right[0])
+		}
+		return out
+	}
+	return nil
 }

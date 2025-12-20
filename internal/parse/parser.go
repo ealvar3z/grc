@@ -794,7 +794,7 @@ grcdefault:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:73
 		{
-			grcVAL.node = concatNode(grcDollar[1].node, grcDollar[3].node)
+			grcVAL.node = N(KConcat, grcDollar[1].node, grcDollar[3].node)
 		}
 	case 42:
 		grcDollar = grcS[grcpt-1 : grcpt+1]
@@ -810,7 +810,7 @@ grcdefault:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:76
 		{
-			grcVAL.node = concatNode(grcDollar[1].node, grcDollar[3].node)
+			grcVAL.node = N(KConcat, grcDollar[1].node, grcDollar[3].node)
 		}
 	case 45:
 		grcDollar = grcS[grcpt-2 : grcpt+1]

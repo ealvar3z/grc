@@ -178,13 +178,37 @@ func TestRunDollarListArgs(t *testing.T) {
 	}
 }
 
-func TestRunDollarConcat(t *testing.T) {
+func TestRunDollarConcatTwoVars(t *testing.T) {
 	if !haveCmd(t, "printf") {
 		t.Skip("printf not available")
 	}
 	env := NewEnv(nil)
 	env.Set("x", []string{"a", "b"})
 	env.Set("y", []string{"1", "2"})
+	ast, err := parse.Parse(strings.NewReader("printf %s $x^$y\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	var out bytes.Buffer
+	res := (&Runner{Env: env}).RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+	if res.Status != 0 {
+		t.Fatalf("expected status 0, got %d", res.Status)
+	}
+	if out.String() != "a1b2" {
+		t.Fatalf("unexpected stdout: %q", out.String())
+	}
+}
+
+func TestRunDollarConcatVarAndLiteral(t *testing.T) {
+	if !haveCmd(t, "printf") {
+		t.Skip("printf not available")
+	}
+	env := NewEnv(nil)
+	env.Set("x", []string{"a", "b"})
 	ast, err := parse.Parse(strings.NewReader("printf %s $x^y\n"))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
@@ -198,7 +222,7 @@ func TestRunDollarConcat(t *testing.T) {
 	if res.Status != 0 {
 		t.Fatalf("expected status 0, got %d", res.Status)
 	}
-	if out.String() != "a1a2b1b2" {
+	if out.String() != "ayby" {
 		t.Fatalf("unexpected stdout: %q", out.String())
 	}
 }
