@@ -94,6 +94,50 @@ func TestParseConcat(t *testing.T) {
 	}
 }
 
+func TestParseRedir(t *testing.T) {
+	input := "echo hi > out\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	redir := findFirstKind(node, KRedir)
+	if redir == nil {
+		t.Fatalf("expected KRedir node")
+	}
+	if redir.Tok != ">" {
+		t.Fatalf("expected redir Tok \">\", got %q", redir.Tok)
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "hi", "out"}) {
+		t.Fatalf("expected words [echo hi out] in order, got %v", words)
+	}
+}
+
+func TestParseRedirAppend(t *testing.T) {
+	input := "echo hi>>out\n"
+	node, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if node == nil {
+		t.Fatalf("expected non-nil AST")
+	}
+	redir := findFirstKind(node, KRedir)
+	if redir == nil {
+		t.Fatalf("expected KRedir node")
+	}
+	if redir.Tok != ">>" {
+		t.Fatalf("expected redir Tok \">>\", got %q", redir.Tok)
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "hi", "out"}) {
+		t.Fatalf("expected words [echo hi out] in order, got %v", words)
+	}
+}
+
 func isSubsequence(haystack, needle []string) bool {
 	if len(needle) == 0 {
 		return true
@@ -118,4 +162,25 @@ func countKind(kinds []Kind, want Kind) int {
 		}
 	}
 	return count
+}
+
+func findFirstKind(n *Node, want Kind) *Node {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == want {
+		return n
+	}
+	if found := findFirstKind(n.Left, want); found != nil {
+		return found
+	}
+	if found := findFirstKind(n.Right, want); found != nil {
+		return found
+	}
+	for _, child := range n.List {
+		if found := findFirstKind(child, want); found != nil {
+			return found
+		}
+	}
+	return nil
 }

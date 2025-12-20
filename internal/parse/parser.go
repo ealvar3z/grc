@@ -654,7 +654,8 @@ grcdefault:
 		grcDollar = grcS[grcpt-2 : grcpt+1]
 //line internal/parse/parser.y:43
 		{
-			grcVAL.node = N(KRedir, grcDollar[1].node, grcDollar[2].node)
+			grcVAL.node = grcDollar[1].node
+			grcVAL.node.Right = grcDollar[2].node
 		}
 	case 17:
 		grcDollar = grcS[grcpt-1 : grcpt+1]
@@ -744,7 +745,8 @@ grcdefault:
 		grcDollar = grcS[grcpt-2 : grcpt+1]
 //line internal/parse/parser.y:63
 		{
-			grcVAL.node = N(KRedir, grcDollar[1].node, grcDollar[2].node)
+			grcVAL.node = grcDollar[1].node
+			grcVAL.node.Left = grcDollar[2].node
 		}
 	case 32:
 		grcDollar = grcS[grcpt-2 : grcpt+1]

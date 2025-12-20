@@ -40,7 +40,7 @@ paren:	'(' body ')'		{$$=N(KParen, $2, nil);}
 assign:	first '=' word		{$$=N(KAssign, $1, $3);}
 epilog:				{$$=nil;}
 |	redir epilog		{$$=L(KRedir, $1, $2);}
-redir:	REDIR word		{$$=N(KRedir, $1, $2);}
+redir:	REDIR word		{$$=$1; $$.Right = $2;}
 |	DUP			{$$=$1;}
 cmd:				{$$=nil;}
 |	brace epilog		{$$=N(KCall, $1, $2);}
@@ -60,7 +60,7 @@ cmd:				{$$=nil;}
 |	cmd ANDAND cmd		{$$=N(KAnd, $1, $3);}
 |	cmd OROR cmd		{$$=N(KOr, $1, $3);}
 |	cmd '|' cmd		{$$=N(KPipe, $1, $3);}
-|	redir cmd  %prec BANG	{$$=N(KRedir, $1, $2);}
+|	redir cmd  %prec BANG	{$$=$1; $$.Left = $2;}
 |	assign cmd %prec BANG	{$$=N(KAssign, $1, $2);}
 |	BANG cmd		{$$=N(Kind(BANG), $2, nil);}
 |	SUBSHELL cmd		{$$=N(KSubshell, $2, nil);}
