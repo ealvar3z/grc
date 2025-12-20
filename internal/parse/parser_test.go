@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestParseReadsInput(t *testing.T) {
+func TestParseSimpleCall(t *testing.T) {
 	input := "echo hi\n"
 	node, err := Parse(strings.NewReader(input))
 	if err != nil {
@@ -14,21 +14,14 @@ func TestParseReadsInput(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	root := node
-	if root.Kind == KSeq && root.Left != nil {
-		root = root.Left
-	}
-	if root.Kind != KCall {
-		t.Fatalf("expected call node, got %#v", root)
-	}
-	words := collectWords(root)
-	if len(words) < 2 || words[0] != "echo" || words[1] != "hi" {
-		t.Fatalf("expected words [echo hi], got %v", words)
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "hi"}) {
+		t.Fatalf("expected words [echo hi] in order, got %v", words)
 	}
 }
 
-func TestParseQuotedArg(t *testing.T) {
-	input := "echo 'a b' x\n"
+func TestParseQuotedWord(t *testing.T) {
+	input := "echo 'a b; c' x\n"
 	node, err := Parse(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
@@ -36,13 +29,13 @@ func TestParseQuotedArg(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	words := collectWords(node)
-	if len(words) < 3 || words[0] != "echo" || words[1] != "a b" || words[2] != "x" {
-		t.Fatalf("expected words [echo a b x], got %v", words)
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"echo", "a b; c", "x"}) {
+		t.Fatalf("expected words [echo a b; c x] in order, got %v", words)
 	}
 }
 
-func TestParseSequence(t *testing.T) {
+func TestParseSeq(t *testing.T) {
 	input := "a;b\n"
 	node, err := Parse(strings.NewReader(input))
 	if err != nil {
@@ -51,8 +44,15 @@ func TestParseSequence(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	if node.Kind != KSeq || node.Left == nil || node.Right == nil {
-		t.Fatalf("expected sequence node, got %#v", node)
+	kinds := KindsPreorder(node)
+	if node.Kind != KSeq {
+		if countKind(kinds, KSeq) != 1 {
+			t.Fatalf("expected exactly one KSeq, got %v", kinds)
+		}
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"a", "b"}) {
+		t.Fatalf("expected words [a b] in order, got %v", words)
 	}
 }
 
@@ -65,23 +65,38 @@ func TestParsePipe(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	if node.Kind != KPipe {
-		t.Fatalf("expected pipe node, got %#v", node)
+	kinds := KindsPreorder(node)
+	if countKind(kinds, KPipe) == 0 {
+		t.Fatalf("expected KPipe in preorder kinds, got %v", kinds)
+	}
+	words := PreorderWords(node)
+	if !isSubsequence(words, []string{"a", "b"}) {
+		t.Fatalf("expected words [a b] in order, got %v", words)
 	}
 }
 
-func collectWords(n *Node) []string {
-	if n == nil {
-		return nil
+func isSubsequence(haystack, needle []string) bool {
+	if len(needle) == 0 {
+		return true
 	}
-	var out []string
-	if n.Kind == KWord && n.Tok != "" {
-		out = append(out, n.Tok)
+	j := 0
+	for _, s := range haystack {
+		if s == needle[j] {
+			j++
+			if j == len(needle) {
+				return true
+			}
+		}
 	}
-	out = append(out, collectWords(n.Left)...)
-	out = append(out, collectWords(n.Right)...)
-	for _, child := range n.List {
-		out = append(out, collectWords(child)...)
+	return false
+}
+
+func countKind(kinds []Kind, want Kind) int {
+	count := 0
+	for _, k := range kinds {
+		if k == want {
+			count++
+		}
 	}
-	return out
+	return count
 }

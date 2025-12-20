@@ -55,13 +55,13 @@ state 3
 	cmdsa:  cmd.'&' 
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
 	';'  shift 29
 	'&'  shift 30
+	'|'  shift 33
 	.  reduce 3 (src line 30)
 
 
@@ -617,7 +617,7 @@ state 32
 	comword  goto 21
 
 state 33
-	cmd:  cmd PIPE.cmd 
+	cmd:  cmd '|'.cmd 
 	cmd: .    (18)
 
 	FOR  shift 7
@@ -964,43 +964,47 @@ state 59
 
 	words  goto 89
 
+60: shift/reduce conflict (shift 33(0), red'n 31(3)) on '|'
 state 60
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 	cmd:  redir cmd.    (31)
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 31 (src line 63)
 
 
+61: shift/reduce conflict (shift 33(0), red'n 32(3)) on '|'
 state 61
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 	cmd:  assign cmd.    (32)
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 32 (src line 64)
 
 
+62: shift/reduce conflict (shift 33(0), red'n 33(3)) on '|'
 state 62
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 	cmd:  BANG cmd.    (33)
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 33 (src line 65)
 
 
+63: shift/reduce conflict (shift 33(0), red'n 34(3)) on '|'
 state 63
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 	cmd:  SUBSHELL cmd.    (34)
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 34 (src line 66)
 
 
@@ -1048,14 +1052,14 @@ state 66
 	cmdsan:  cmd.'\n' 
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
 	'\n'  shift 93
 	';'  shift 29
 	'&'  shift 30
+	'|'  shift 33
 	.  reduce 5 (src line 32)
 
 
@@ -1222,32 +1226,40 @@ state 77
 	comword  goto 45
 	keyword  goto 44
 
+78: shift/reduce conflict (shift 33(0), red'n 28(2)) on '|'
 state 78
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd ANDAND cmd.    (28)
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 28 (src line 60)
 
 
+79: shift/reduce conflict (shift 33(0), red'n 29(2)) on '|'
 state 79
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
 	cmd:  cmd OROR cmd.    (29)
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
+	'|'  shift 33
 	.  reduce 29 (src line 61)
 
 
+80: shift/reduce conflict (shift 31(2), red'n 30(0)) on ANDAND
+80: shift/reduce conflict (shift 32(2), red'n 30(0)) on OROR
+80: shift/reduce conflict (shift 33(0), red'n 30(0)) on '|'
 state 80
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
-	cmd:  cmd PIPE cmd.    (30)
+	cmd:  cmd.'|' cmd 
+	cmd:  cmd '|' cmd.    (30)
 
+	ANDAND  shift 31
+	OROR  shift 32
+	'|'  shift 33
 	.  reduce 30 (src line 62)
 
 
@@ -1257,27 +1269,29 @@ state 81
 	.  reduce 15 (src line 42)
 
 
+82: shift/reduce conflict (shift 33(0), red'n 20(1)) on '|'
 state 82
 	cmd:  IF paren cmd.    (20)
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
+	'|'  shift 33
 	.  reduce 20 (src line 47)
 
 
+83: shift/reduce conflict (shift 33(0), red'n 21(1)) on '|'
 state 83
 	cmd:  IF NOT cmd.    (21)
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
+	'|'  shift 33
 	.  reduce 21 (src line 49)
 
 
@@ -1299,15 +1313,16 @@ state 85
 	.  error
 
 
+86: shift/reduce conflict (shift 33(0), red'n 24(1)) on '|'
 state 86
 	cmd:  WHILE paren cmd.    (24)
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
+	'|'  shift 33
 	.  reduce 24 (src line 54)
 
 
@@ -1539,15 +1554,16 @@ state 104
 	comword  goto 45
 	keyword  goto 44
 
+105: shift/reduce conflict (shift 33(0), red'n 23(1)) on '|'
 state 105
 	cmd:  FOR '(' word ')' cmd.    (23)
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
+	'|'  shift 33
 	.  reduce 23 (src line 52)
 
 
@@ -1588,27 +1604,28 @@ state 107
 	first  goto 18
 	comword  goto 21
 
+108: shift/reduce conflict (shift 33(0), red'n 22(1)) on '|'
 state 108
 	cmd:  FOR '(' word IN words ')' cmd.    (22)
 	cmd:  cmd.ANDAND cmd 
 	cmd:  cmd.OROR cmd 
-	cmd:  cmd.PIPE cmd 
+	cmd:  cmd.'|' cmd 
 
-	PIPE  shift 33
 	ANDAND  shift 31
 	OROR  shift 32
+	'|'  shift 33
 	.  reduce 22 (src line 50)
 
 
-40 terminals, 18 nonterminals
+41 terminals, 18 nonterminals
 65 grammar rules, 109/16000 states
-0 shift/reduce, 0 reduce/reduce conflicts reported
+14 shift/reduce, 0 reduce/reduce conflicts reported
 67 working sets used
 memory: parser 221/240000
 81 extra closures
-642 shift entries, 2 exceptions
+645 shift entries, 2 exceptions
 79 goto entries
 122 entries saved by goto default
-Optimizer space used: output 323/240000
-323 table entries, 86 zero
-maximum spread: 40, maximum offset: 107
+Optimizer space used: output 325/240000
+325 table entries, 88 zero
+maximum spread: 41, maximum offset: 107

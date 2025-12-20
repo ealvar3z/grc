@@ -26,6 +26,7 @@ const (
 	KDollar
 	KCount
 	KBackquote
+	KConcat
 )
 
 // Pos tracks a source position.
