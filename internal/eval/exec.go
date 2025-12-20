@@ -14,6 +14,7 @@ type RedirPlan struct {
 
 // ExecPlan is a dry-run execution plan.
 type ExecPlan struct {
+	Kind       PlanKind
 	Argv       []string
 	Redirs     []RedirPlan
 	PipeTo     *ExecPlan
@@ -21,7 +22,17 @@ type ExecPlan struct {
 	IfOK       *ExecPlan
 	IfFail     *ExecPlan
 	Background bool
+	Func       *FuncDef
 }
+
+// PlanKind describes the plan node type.
+type PlanKind int
+
+const (
+	PlanCmd PlanKind = iota
+	PlanFnDef
+	PlanNoop
+)
 
 // BuildPlan converts an AST into an execution plan.
 func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
@@ -95,6 +106,8 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		}
 		Tail(left).IfFail = right
 		return left, nil
+	case parse.KBrace:
+		return BuildPlan(ast.Left, env)
 	case parse.KRedir:
 		plan, err := BuildPlan(ast.Left, env)
 		if err != nil {
@@ -114,11 +127,18 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		if err != nil {
 			return nil, err
 		}
-		plan := &ExecPlan{Argv: argv}
+		plan := &ExecPlan{Kind: PlanCmd, Argv: argv}
 		if err := applyRedirsFromNode(plan, ast.Right, env); err != nil {
 			return nil, err
 		}
 		return plan, nil
+	case parse.KFnDef:
+		name := fnName(ast.Left)
+		if name == "" {
+			return &ExecPlan{Kind: PlanNoop}, nil
+		}
+		def := &FuncDef{Name: name, Body: ast.Right}
+		return &ExecPlan{Kind: PlanFnDef, Func: def}, nil
 	default:
 		return nil, fmt.Errorf("unsupported AST node: %v", ast.Kind)
 	}
@@ -150,6 +170,27 @@ func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 		return nil
 	}
 	return nil
+}
+
+func fnName(n *parse.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.Kind == parse.KWord && n.Tok != "" {
+		return n.Tok
+	}
+	for _, child := range n.List {
+		if name := fnName(child); name != "" {
+			return name
+		}
+	}
+	if name := fnName(n.Left); name != "" {
+		return name
+	}
+	if name := fnName(n.Right); name != "" {
+		return name
+	}
+	return ""
 }
 
 // Tail returns the last plan in the Next chain.

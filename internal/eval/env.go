@@ -1,16 +1,32 @@
 package eval
 
-import "strconv"
+import (
+	"strconv"
+
+	"grc/internal/parse"
+)
 
 // Env holds rc-style environment variables with list values.
 type Env struct {
 	parent *Env
 	vars   map[string][]string
+	funcs  map[string]FuncDef
+}
+
+// FuncDef stores a function definition.
+type FuncDef struct {
+	Name string
+	Body *parse.Node
 }
 
 // NewEnv constructs an environment, optionally inheriting from parent.
 func NewEnv(parent *Env) *Env {
 	return &Env{parent: parent, vars: make(map[string][]string)}
+}
+
+// NewChild creates a child environment that inherits from parent.
+func NewChild(parent *Env) *Env {
+	return NewEnv(parent)
 }
 
 // Get returns the value for name, searching parents if needed.
@@ -49,6 +65,33 @@ func (e *Env) Unset(name string) {
 		return
 	}
 	delete(e.vars, name)
+}
+
+// SetFunc defines a function in the current environment.
+func (e *Env) SetFunc(name string, body *parse.Node) {
+	if e == nil {
+		return
+	}
+	if e.funcs == nil {
+		e.funcs = make(map[string]FuncDef)
+	}
+	e.funcs[name] = FuncDef{Name: name, Body: body}
+}
+
+// GetFunc looks up a function, searching parent environments.
+func (e *Env) GetFunc(name string) (FuncDef, bool) {
+	if e == nil {
+		return FuncDef{}, false
+	}
+	if e.funcs != nil {
+		if def, ok := e.funcs[name]; ok {
+			return def, true
+		}
+	}
+	if e.parent != nil {
+		return e.parent.GetFunc(name)
+	}
+	return FuncDef{}, false
 }
 
 // SetStatus sets the status variable to the numeric exit code.

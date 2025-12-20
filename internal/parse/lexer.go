@@ -204,6 +204,8 @@ func isIdentRune(r rune) bool {
 		return true
 	case r == '_':
 		return true
+	case r == '*':
+		return true
 	default:
 		return false
 	}

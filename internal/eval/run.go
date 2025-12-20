@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 )
 
 // Runner executes execution plans.
@@ -109,8 +110,17 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	if p == nil {
 		return 0
 	}
+	if p.Kind == PlanFnDef {
+		if p.Func != nil && p.Func.Name != "" {
+			r.Env.SetFunc(p.Func.Name, p.Func.Body)
+		}
+		return 0
+	}
 	if len(p.Argv) == 0 {
 		return 0
+	}
+	if def, ok := r.Env.GetFunc(p.Argv[0]); ok {
+		return r.runFuncCall(def, p, stdin, stdout, stderr)
 	}
 	if builtin, ok := r.Builtins[p.Argv[0]]; ok {
 		return r.runBuiltin(builtin, p, stdin, stdout, stderr)
@@ -145,6 +155,37 @@ func (r *Runner) runExternal(p *ExecPlan, stdin io.Reader, stdout, stderr io.Wri
 	}
 	err = cmd.Wait()
 	return exitStatus(err)
+}
+
+func (r *Runner) runFuncCall(def FuncDef, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	in := stdin
+	out := stdout
+	files, err := applyRedirs(p, &in, &out)
+	if err != nil {
+		return 1
+	}
+	for _, f := range files {
+		defer f.Close()
+	}
+	child := NewChild(r.Env)
+	args := []string{}
+	if len(p.Argv) > 1 {
+		args = p.Argv[1:]
+	}
+	child.Set("*", args)
+	child.Set("0", []string{p.Argv[0]})
+	for i, arg := range args {
+		child.Set(strconv.Itoa(i+1), []string{arg})
+	}
+	bodyPlan, err := BuildPlan(def.Body, child)
+	if err != nil {
+		return 1
+	}
+	origEnv := r.Env
+	r.Env = child
+	status := r.runChain(bodyPlan, in, out, stderr)
+	r.Env = origEnv
+	return status
 }
 
 func buildCmd(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
