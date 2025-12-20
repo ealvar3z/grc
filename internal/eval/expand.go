@@ -2,6 +2,9 @@ package eval
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"grc/internal/parse"
 )
@@ -11,15 +14,26 @@ func ExpandWord(n *parse.Node, env *Env) ([]string, error) {
 	if n == nil {
 		return nil, nil
 	}
+	words, err := expandWordBase(n, env)
+	if err != nil {
+		return nil, err
+	}
+	return globWords(words)
+}
+
+func expandWordBase(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
 	switch n.Kind {
 	case parse.KWord:
 		return []string{n.Tok}, nil
 	case parse.KConcat:
-		left, err := ExpandWord(n.Left, env)
+		left, err := expandWordBase(n.Left, env)
 		if err != nil {
 			return nil, err
 		}
-		right, err := ExpandWord(n.Right, env)
+		right, err := expandWordBase(n.Right, env)
 		if err != nil {
 			return nil, err
 		}
@@ -101,4 +115,32 @@ func concatProduct(left, right []string) []string {
 		return out
 	}
 	return nil
+}
+
+func globWords(words []string) ([]string, error) {
+	var out []string
+	for _, w := range words {
+		matches, err := GlobWord(w)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, matches...)
+	}
+	return out, nil
+}
+
+// GlobWord expands glob patterns in w.
+func GlobWord(w string) ([]string, error) {
+	if !strings.ContainsAny(w, "*?[") {
+		return []string{w}, nil
+	}
+	matches, err := filepath.Glob(w)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return []string{w}, nil
+	}
+	sort.Strings(matches)
+	return matches, nil
 }
