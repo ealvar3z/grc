@@ -8,7 +8,26 @@ import (
 
 // Runner executes execution plans.
 type Runner struct {
-	Env *Env
+	Env           *Env
+	Builtins      map[string]Builtin
+	exitRequested bool
+	exitCode      int
+}
+
+// ExitRequested reports whether an exit builtin has been invoked.
+func (r *Runner) ExitRequested() bool {
+	if r == nil {
+		return false
+	}
+	return r.exitRequested
+}
+
+// ExitCode returns the requested exit code.
+func (r *Runner) ExitCode() int {
+	if r == nil {
+		return 0
+	}
+	return r.exitCode
 }
 
 // Result captures the exit status.
@@ -18,6 +37,12 @@ type Result struct {
 
 // RunPlan executes a plan tree and returns the final status.
 func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) Result {
+	if r.Env == nil {
+		r.Env = NewEnv(nil)
+	}
+	if r.Builtins == nil {
+		r.Builtins = defaultBuiltins()
+	}
 	status := r.runChain(p, stdin, stdout, stderr)
 	return Result{Status: status}
 }
@@ -25,17 +50,27 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	status := 0
 	for cur := p; cur != nil; cur = cur.Next {
+		if r.exitRequested {
+			return r.exitCode
+		}
 		if cur.Background {
 			go r.runSingle(cur, stdin, stdout, stderr)
 			status = 0
+			r.Env.SetStatus(status)
 			continue
 		}
 		status = r.runSingle(cur, stdin, stdout, stderr)
+		r.Env.SetStatus(status)
+		if r.exitRequested {
+			return r.exitCode
+		}
 		if status == 0 && cur.IfOK != nil {
 			status = r.runChain(cur.IfOK, stdin, stdout, stderr)
+			r.Env.SetStatus(status)
 		}
 		if status != 0 && cur.IfFail != nil {
 			status = r.runChain(cur.IfFail, stdin, stdout, stderr)
+			r.Env.SetStatus(status)
 		}
 	}
 	return status
@@ -48,61 +83,55 @@ func (r *Runner) runSingle(p *ExecPlan, stdin io.Reader, stdout, stderr io.Write
 	if p.PipeTo != nil {
 		return r.runPipe(p, p.PipeTo, stdin, stdout, stderr)
 	}
-	return r.runCommand(p, stdin, stdout, stderr)
+	return r.runStage(p, stdin, stdout, stderr)
 }
 
 func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	pr, pw := io.Pipe()
+	leftDone := make(chan int, 1)
+	rightDone := make(chan int, 1)
 
-	leftCmd, leftCleanup, err := buildCmd(left, stdin, pw, stderr)
-	if err != nil {
-		pw.Close()
-		pr.Close()
-		return 127
-	}
-	rightCmd, rightCleanup, err := buildCmd(right, pr, stdout, stderr)
-	if err != nil {
-		leftCleanup()
-		pw.Close()
-		pr.Close()
-		return 127
-	}
-	if leftCmd == nil || rightCmd == nil {
-		leftCleanup()
-		rightCleanup()
-		pw.Close()
-		pr.Close()
-		return 0
-	}
+	go func() {
+		leftDone <- r.runStage(left, stdin, pw, stderr)
+		_ = pw.Close()
+	}()
+	go func() {
+		rightDone <- r.runStage(right, pr, stdout, stderr)
+		_ = pr.Close()
+	}()
 
-	if err := rightCmd.Start(); err != nil {
-		leftCleanup()
-		rightCleanup()
-		pw.Close()
-		pr.Close()
-		return exitStatus(err)
-	}
-	if err := leftCmd.Start(); err != nil {
-		leftCleanup()
-		rightCleanup()
-		pw.Close()
-		pr.Close()
-		return exitStatus(err)
-	}
-
-	leftErr := leftCmd.Wait()
-	pw.Close()
-	leftCleanup()
-
-	rightErr := rightCmd.Wait()
-	pr.Close()
-	rightCleanup()
-
-	_ = leftErr
-	return exitStatus(rightErr)
+	_ = <-leftDone
+	status := <-rightDone
+	return status
 }
 
-func (r *Runner) runCommand(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	if p == nil {
+		return 0
+	}
+	if len(p.Argv) == 0 {
+		return 0
+	}
+	if builtin, ok := r.Builtins[p.Argv[0]]; ok {
+		return r.runBuiltin(builtin, p, stdin, stdout, stderr)
+	}
+	return r.runExternal(p, stdin, stdout, stderr)
+}
+
+func (r *Runner) runBuiltin(builtin Builtin, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	in := stdin
+	out := stdout
+	files, err := applyRedirs(p, &in, &out)
+	if err != nil {
+		return 1
+	}
+	for _, f := range files {
+		defer f.Close()
+	}
+	return builtin(in, out, stderr, p.Argv, r)
+}
+
+func (r *Runner) runExternal(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	cmd, cleanup, err := buildCmd(p, stdin, stdout, stderr)
 	if err != nil {
 		return 127

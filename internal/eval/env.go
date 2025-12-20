@@ -1,5 +1,7 @@
 package eval
 
+import "strconv"
+
 // Env holds rc-style environment variables with list values.
 type Env struct {
 	parent *Env
@@ -47,4 +49,22 @@ func (e *Env) Unset(name string) {
 		return
 	}
 	delete(e.vars, name)
+}
+
+// SetStatus sets the status variable to the numeric exit code.
+func (e *Env) SetStatus(code int) {
+	e.Set("status", []string{strconv.Itoa(code)})
+}
+
+// GetStatus returns the numeric status value or 0 if unset/invalid.
+func (e *Env) GetStatus() int {
+	vals := e.Get("status")
+	if len(vals) == 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(vals[0])
+	if err != nil {
+		return 0
+	}
+	return n
 }
