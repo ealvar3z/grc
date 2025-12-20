@@ -17,6 +17,12 @@ type Lexer struct {
 
 	peeked bool
 	peek   lexRune
+
+	pendingTok   int
+	pendingVal   *Node
+	prevConcat   bool
+	prevWasDollar bool
+	sawSpace     bool
 }
 
 type lexRune struct {
@@ -33,6 +39,18 @@ func NewLexer(rd io.Reader) *Lexer {
 }
 
 func (lx *Lexer) Lex(lval *grcSymType) int {
+	if lx.pendingTok != 0 {
+		tok := lx.pendingTok
+		lx.pendingTok = 0
+		if lx.pendingVal != nil {
+			lval.node = lx.pendingVal
+			lx.pendingVal = nil
+		}
+		lx.prevConcat = canConcatToken(tok)
+		lx.prevWasDollar = tok == int('$')
+		lx.sawSpace = false
+		return tok
+	}
 	for {
 		r, line, col, err := lx.readRune()
 		if err != nil {
@@ -41,58 +59,67 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 
 		switch r {
 		case ' ', '\t':
+			lx.sawSpace = true
+			if lx.prevWasDollar {
+				lx.prevWasDollar = false
+			}
 			continue
 		case '\n':
+			lx.prevConcat = false
+			lx.prevWasDollar = false
+			lx.sawSpace = false
 			return int(r)
 		case '&':
 			if lx.consumeIf('&') {
-				return ANDAND
+				return lx.emitToken(ANDAND, nil, lval)
 			}
-			return int(r)
+			return lx.emitToken(int(r), nil, lval)
 		case '|':
 			if lx.consumeIf('|') {
-				return OROR
+				return lx.emitToken(OROR, nil, lval)
 			}
-			return int(r)
+			return lx.emitToken(int(r), nil, lval)
 		case '>':
 			if lx.consumeIf('>') {
-				lval.node = &Node{Kind: KRedir, Tok: ">>", Pos: Pos{Line: line, Col: col}}
-				return redirwToken()
+				node := &Node{Kind: KRedir, Tok: ">>", Pos: Pos{Line: line, Col: col}}
+				return lx.emitToken(REDIR, node, lval)
 			}
-			lval.node = &Node{Kind: KRedir, Tok: ">", Pos: Pos{Line: line, Col: col}}
-			return REDIR
-	case '<':
-		if lx.consumeIf('>') {
-			lval.node = &Node{Kind: KRedir, Tok: "<>", Pos: Pos{Line: line, Col: col}}
-			return REDIR
-		}
-		lval.node = &Node{Kind: KRedir, Tok: "<", Pos: Pos{Line: line, Col: col}}
-		return REDIR
-	case '\'':
-		text, ok := lx.readSingleQuoted()
-		if !ok {
-			lx.Error("unterminated quote")
-			return 0
-		}
-		node := W(text)
-		node.Pos = Pos{Line: line, Col: col}
-		lval.node = node
-		return WORD
-	case ';', '(', ')', '{', '}', '=', '^', '$', '"', '`':
-		return int(r)
+			node := &Node{Kind: KRedir, Tok: ">", Pos: Pos{Line: line, Col: col}}
+			return lx.emitToken(REDIR, node, lval)
+		case '<':
+			if lx.consumeIf('>') {
+				node := &Node{Kind: KRedir, Tok: "<>", Pos: Pos{Line: line, Col: col}}
+				return lx.emitToken(REDIR, node, lval)
+			}
+			node := &Node{Kind: KRedir, Tok: "<", Pos: Pos{Line: line, Col: col}}
+			return lx.emitToken(REDIR, node, lval)
+		case '\'':
+			text, ok := lx.readSingleQuoted()
+			if !ok {
+				lx.Error("unterminated quote")
+				return 0
+			}
+			node := W(text)
+			node.Pos = Pos{Line: line, Col: col}
+			return lx.emitToken(WORD, node, lval)
+		case ';', '(', ')', '{', '}', '=', '^', '$', '"', '`':
+			return lx.emitToken(int(r), nil, lval)
 		default:
-			word := lx.readWordTail(r)
+			word := ""
+			if lx.prevWasDollar && !lx.sawSpace && isIdentRune(r) {
+				word = lx.readIdentTail(r)
+			} else {
+				word = lx.readWordTail(r)
+			}
 			if word == "" {
 				return 0
 			}
 			node := W(word)
 			node.Pos = Pos{Line: line, Col: col}
 			if tok, ok := keywordToken(word); ok {
-				lval.node = node
-				return tok
+				return lx.emitToken(tok, node, lval)
 			}
-			lval.node = node
-			return WORD
+			return lx.emitToken(WORD, node, lval)
 		}
 	}
 }
@@ -141,9 +168,41 @@ func (lx *Lexer) readWordTail(first rune) string {
 	return b.String()
 }
 
+func (lx *Lexer) readIdentTail(first rune) string {
+	var b strings.Builder
+	b.WriteRune(first)
+	for {
+		r, _, _, err := lx.peekRune()
+		if err != nil {
+			break
+		}
+		if !isIdentRune(r) {
+			break
+		}
+		r, _, _, _ = lx.readRune()
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 func isWordBreak(r rune) bool {
 	switch r {
 	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>':
+		return true
+	default:
+		return false
+	}
+}
+
+func isIdentRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= 'A' && r <= 'Z':
+		return true
+	case r >= '0' && r <= '9':
+		return true
+	case r == '_':
 		return true
 	default:
 		return false
@@ -201,10 +260,6 @@ func (lx *Lexer) readRawRune() lexRune {
 	return lexRune{r: r, line: line, col: col, nextLine: nextLine, nextCol: nextCol}
 }
 
-func redirwToken() int {
-	return REDIR
-}
-
 func (lx *Lexer) readSingleQuoted() (string, bool) {
 	var b strings.Builder
 	for {
@@ -216,5 +271,62 @@ func (lx *Lexer) readSingleQuoted() (string, bool) {
 			return b.String(), true
 		}
 		b.WriteRune(r)
+	}
+}
+
+func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
+	if tok == int('$') {
+		if !lx.sawSpace && lx.prevConcat {
+			lx.pendingTok = tok
+			lx.pendingVal = nil
+			lx.prevConcat = false
+			lx.prevWasDollar = false
+			return int('^')
+		}
+		lx.prevConcat = false
+		lx.prevWasDollar = true
+		lx.sawSpace = false
+		return tok
+	}
+	if lx.prevWasDollar && !lx.sawSpace {
+		if node != nil {
+			lval.node = node
+		}
+		lx.prevWasDollar = false
+		lx.prevConcat = canConcatTokenAfterDollar(tok)
+		lx.sawSpace = false
+		return tok
+	}
+	if !lx.sawSpace && lx.prevConcat && canConcatToken(tok) {
+		lx.pendingTok = tok
+		lx.pendingVal = node
+		lx.prevConcat = false
+		lx.prevWasDollar = false
+		return int('^')
+	}
+	if node != nil {
+		lval.node = node
+	}
+	lx.prevConcat = canConcatToken(tok)
+	lx.prevWasDollar = false
+	lx.sawSpace = false
+	return tok
+}
+
+func canConcatToken(tok int) bool {
+	switch tok {
+	case WORD, int('`'), int(')'), int('}'), int('"'):
+		return true
+	default:
+		return false
+	}
+}
+
+func canConcatTokenAfterDollar(tok int) bool {
+	switch tok {
+	case WORD, int('`'), int(')'), int('}'), int('"'):
+		return true
+	default:
+		return false
 	}
 }

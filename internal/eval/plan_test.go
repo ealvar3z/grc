@@ -161,6 +161,72 @@ func TestPlanDollarConcatVarAndLiteral(t *testing.T) {
 	}
 }
 
+func TestPlanFreeCaretDollar(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"O2"})
+	ast, err := parse.Parse(strings.NewReader("echo -$x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	want := []string{"echo", "-O2"}
+	if len(plan.Argv) != len(want) {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+	for i := range want {
+		if plan.Argv[i] != want[i] {
+			t.Fatalf("unexpected argv: %v", plan.Argv)
+		}
+	}
+}
+
+func TestPlanFreeCaretSuffix(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("stem", []string{"foo"})
+	ast, err := parse.Parse(strings.NewReader("echo $stem.c\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	want := []string{"echo", "foo.c"}
+	if len(plan.Argv) != len(want) {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+	for i := range want {
+		if plan.Argv[i] != want[i] {
+			t.Fatalf("unexpected argv: %v", plan.Argv)
+		}
+	}
+}
+
+func TestPlanNoFreeCaretWithSpace(t *testing.T) {
+	env := NewEnv(nil)
+	env.Set("x", []string{"O2"})
+	ast, err := parse.Parse(strings.NewReader("echo - $x\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	want := []string{"echo", "-", "O2"}
+	if len(plan.Argv) != len(want) {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+	for i := range want {
+		if plan.Argv[i] != want[i] {
+			t.Fatalf("unexpected argv: %v", plan.Argv)
+		}
+	}
+}
+
 func TestPlanSeq(t *testing.T) {
 	ast, err := parse.Parse(strings.NewReader("a;b\n"))
 	if err != nil {

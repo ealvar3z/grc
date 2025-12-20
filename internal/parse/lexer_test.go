@@ -111,3 +111,15 @@ func TestLexerSingleQuoted(t *testing.T) {
 	}
 	assertTokens(t, input, want)
 }
+
+func TestLexerFreeCaretDollar(t *testing.T) {
+	input := "-$x\n"
+	want := []tokPair{
+		{tok: WORD, text: "-", hasText: true},
+		{tok: int('^')},
+		{tok: int('$')},
+		{tok: WORD, text: "x", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
