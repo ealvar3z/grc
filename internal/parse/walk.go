@@ -30,3 +30,25 @@ func KindsPreorder(n *Node) []Kind {
 	}
 	return out
 }
+
+// FindFirstKind returns the first node with the given kind in preorder.
+func FindFirstKind(n *Node, k Kind) *Node {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == k {
+		return n
+	}
+	if found := FindFirstKind(n.Left, k); found != nil {
+		return found
+	}
+	if found := FindFirstKind(n.Right, k); found != nil {
+		return found
+	}
+	for _, child := range n.List {
+		if found := FindFirstKind(child, k); found != nil {
+			return found
+		}
+	}
+	return nil
+}

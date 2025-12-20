@@ -94,7 +94,7 @@ func TestParseConcat(t *testing.T) {
 	}
 }
 
-func TestParseRedir(t *testing.T) {
+func TestParseRedirOutSpaced(t *testing.T) {
 	input := "echo hi > out\n"
 	node, err := Parse(strings.NewReader(input))
 	if err != nil {
@@ -103,7 +103,7 @@ func TestParseRedir(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	redir := findFirstKind(node, KRedir)
+	redir := FindFirstKind(node, KRedir)
 	if redir == nil {
 		t.Fatalf("expected KRedir node")
 	}
@@ -116,7 +116,7 @@ func TestParseRedir(t *testing.T) {
 	}
 }
 
-func TestParseRedirAppend(t *testing.T) {
+func TestParseRedirOutAdjacent(t *testing.T) {
 	input := "echo hi>>out\n"
 	node, err := Parse(strings.NewReader(input))
 	if err != nil {
@@ -125,7 +125,7 @@ func TestParseRedirAppend(t *testing.T) {
 	if node == nil {
 		t.Fatalf("expected non-nil AST")
 	}
-	redir := findFirstKind(node, KRedir)
+	redir := FindFirstKind(node, KRedir)
 	if redir == nil {
 		t.Fatalf("expected KRedir node")
 	}
@@ -162,25 +162,4 @@ func countKind(kinds []Kind, want Kind) int {
 		}
 	}
 	return count
-}
-
-func findFirstKind(n *Node, want Kind) *Node {
-	if n == nil {
-		return nil
-	}
-	if n.Kind == want {
-		return n
-	}
-	if found := findFirstKind(n.Left, want); found != nil {
-		return found
-	}
-	if found := findFirstKind(n.Right, want); found != nil {
-		return found
-	}
-	for _, child := range n.List {
-		if found := findFirstKind(child, want); found != nil {
-			return found
-		}
-	}
-	return nil
 }
