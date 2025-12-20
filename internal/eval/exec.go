@@ -16,6 +16,8 @@ type RedirPlan struct {
 type ExecPlan struct {
 	Kind       PlanKind
 	Argv       []string
+	Prefix     []AssignPrefix
+	Call       *parse.Node
 	Redirs     []RedirPlan
 	PipeTo     *ExecPlan
 	Next       *ExecPlan
@@ -23,6 +25,14 @@ type ExecPlan struct {
 	IfFail     *ExecPlan
 	Background bool
 	Func       *FuncDef
+	AssignName string
+	AssignVal  *parse.Node
+}
+
+// AssignPrefix holds a temporary assignment for a command invocation.
+type AssignPrefix struct {
+	Name string
+	Val  *parse.Node
 }
 
 // PlanKind describes the plan node type.
@@ -32,6 +42,7 @@ const (
 	PlanCmd PlanKind = iota
 	PlanFnDef
 	PlanNoop
+	PlanAssign
 )
 
 // BuildPlan converts an AST into an execution plan.
@@ -127,7 +138,7 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		if err != nil {
 			return nil, err
 		}
-		plan := &ExecPlan{Kind: PlanCmd, Argv: argv}
+		plan := &ExecPlan{Kind: PlanCmd, Argv: argv, Call: ast}
 		if err := applyRedirsFromNode(plan, ast.Right, env); err != nil {
 			return nil, err
 		}
@@ -139,6 +150,30 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		}
 		def := &FuncDef{Name: name, Body: ast.Right}
 		return &ExecPlan{Kind: PlanFnDef, Func: def}, nil
+	case parse.KAssign:
+		prefixes, rest := splitPrefixAssign(ast)
+		if len(prefixes) > 0 && rest != nil {
+			plan, err := BuildPlan(rest, env)
+			if err != nil {
+				return nil, err
+			}
+			if plan == nil {
+				return plan, nil
+			}
+			if plan.Kind != PlanCmd {
+				return nil, fmt.Errorf("assignment prefixes require a command")
+			}
+			plan.Prefix = append(prefixes, plan.Prefix...)
+			return plan, nil
+		}
+		name, val, hasCmd := assignParts(ast)
+		if name == "" {
+			return &ExecPlan{Kind: PlanNoop}, nil
+		}
+		if hasCmd {
+			return nil, fmt.Errorf("assignment prefixes not supported")
+		}
+		return &ExecPlan{Kind: PlanAssign, AssignName: name, AssignVal: val}, nil
 	default:
 		return nil, fmt.Errorf("unsupported AST node: %v", ast.Kind)
 	}
@@ -191,6 +226,37 @@ func fnName(n *parse.Node) string {
 		return name
 	}
 	return ""
+}
+
+// assignParts extracts name/value from assignment nodes.
+// Shape: KAssign( KAssign(name, value), cmd ) for standalone or prefix.
+func assignParts(n *parse.Node) (string, *parse.Node, bool) {
+	if n == nil || n.Kind != parse.KAssign {
+		return "", nil, false
+	}
+	if n.Left != nil && n.Left.Kind == parse.KAssign && n.Left.Left != nil {
+		name := fnName(n.Left.Left)
+		return name, n.Left.Right, n.Right != nil
+	}
+	if n.Left != nil {
+		name := fnName(n.Left)
+		return name, n.Right, false
+	}
+	return "", nil, false
+}
+
+func splitPrefixAssign(n *parse.Node) ([]AssignPrefix, *parse.Node) {
+	var prefixes []AssignPrefix
+	cur := n
+	for cur != nil && cur.Kind == parse.KAssign && cur.Left != nil && cur.Left.Kind == parse.KAssign && cur.Right != nil {
+		name := fnName(cur.Left.Left)
+		if name == "" {
+			break
+		}
+		prefixes = append(prefixes, AssignPrefix{Name: name, Val: cur.Left.Right})
+		cur = cur.Right
+	}
+	return prefixes, cur
 }
 
 // Tail returns the last plan in the Next chain.

@@ -326,7 +326,7 @@ func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
 
 func canConcatToken(tok int) bool {
 	switch tok {
-	case WORD, int('`'), int(')'), int('}'), int('"'):
+	case WORD, int('`'), int('"'):
 		return true
 	default:
 		return false
@@ -335,7 +335,7 @@ func canConcatToken(tok int) bool {
 
 func canConcatTokenAfterDollar(tok int) bool {
 	switch tok {
-	case WORD, int('`'), int(')'), int('}'), int('"'):
+	case WORD, int('`'), int('"'):
 		return true
 	default:
 		return false

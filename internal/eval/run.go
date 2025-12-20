@@ -116,19 +116,43 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		}
 		return 0
 	}
-	if len(p.Argv) == 0 {
+	if p.Kind == PlanAssign {
+		vals, err := ExpandValue(p.AssignVal, r.Env)
+		if err != nil {
+			return 1
+		}
+		r.Env.Set(p.AssignName, vals)
 		return 0
 	}
-	if def, ok := r.Env.GetFunc(p.Argv[0]); ok {
-		return r.runFuncCall(def, p, stdin, stdout, stderr)
+	execEnv := r.Env
+	if len(p.Prefix) > 0 {
+		child := NewChild(r.Env)
+		for _, pref := range p.Prefix {
+			vals, err := ExpandValue(pref.Val, child)
+			if err != nil {
+				return 1
+			}
+			child.Set(pref.Name, vals)
+		}
+		execEnv = child
 	}
-	if builtin, ok := r.Builtins[p.Argv[0]]; ok {
-		return r.runBuiltin(builtin, p, stdin, stdout, stderr)
+	argv, err := r.expandArgv(p, execEnv)
+	if err != nil {
+		return 1
 	}
-	return r.runExternal(p, stdin, stdout, stderr)
+	if len(argv) == 0 {
+		return 0
+	}
+	if def, ok := execEnv.GetFunc(argv[0]); ok {
+		return r.runFuncCall(def, argv, p, execEnv, stdin, stdout, stderr)
+	}
+	if builtin, ok := r.Builtins[argv[0]]; ok {
+		return r.runBuiltin(builtin, argv, p, execEnv, stdin, stdout, stderr)
+	}
+	return r.runExternal(argv, p, stdin, stdout, stderr)
 }
 
-func (r *Runner) runBuiltin(builtin Builtin, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
 	in := stdin
 	out := stdout
 	files, err := applyRedirs(p, &in, &out)
@@ -138,11 +162,15 @@ func (r *Runner) runBuiltin(builtin Builtin, p *ExecPlan, stdin io.Reader, stdou
 	for _, f := range files {
 		defer f.Close()
 	}
-	return builtin(in, out, stderr, p.Argv, r)
+	orig := r.Env
+	r.Env = env
+	status := builtin(in, out, stderr, argv, r)
+	r.Env = orig
+	return status
 }
 
-func (r *Runner) runExternal(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
-	cmd, cleanup, err := buildCmd(p, stdin, stdout, stderr)
+func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	cmd, cleanup, err := buildCmd(argv, p, stdin, stdout, stderr)
 	if err != nil {
 		return 127
 	}
@@ -157,7 +185,7 @@ func (r *Runner) runExternal(p *ExecPlan, stdin io.Reader, stdout, stderr io.Wri
 	return exitStatus(err)
 }
 
-func (r *Runner) runFuncCall(def FuncDef, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
 	in := stdin
 	out := stdout
 	files, err := applyRedirs(p, &in, &out)
@@ -167,13 +195,13 @@ func (r *Runner) runFuncCall(def FuncDef, p *ExecPlan, stdin io.Reader, stdout, 
 	for _, f := range files {
 		defer f.Close()
 	}
-	child := NewChild(r.Env)
+	child := NewChild(env)
 	args := []string{}
-	if len(p.Argv) > 1 {
-		args = p.Argv[1:]
+	if len(argv) > 1 {
+		args = argv[1:]
 	}
 	child.Set("*", args)
-	child.Set("0", []string{p.Argv[0]})
+	child.Set("0", []string{argv[0]})
 	for i, arg := range args {
 		child.Set(strconv.Itoa(i+1), []string{arg})
 	}
@@ -188,11 +216,11 @@ func (r *Runner) runFuncCall(def FuncDef, p *ExecPlan, stdin io.Reader, stdout, 
 	return status
 }
 
-func buildCmd(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
-	if p == nil || len(p.Argv) == 0 {
+func buildCmd(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
+	if p == nil || len(argv) == 0 {
 		return nil, func() {}, nil
 	}
-	cmd := exec.Command(p.Argv[0], p.Argv[1:]...)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -208,6 +236,16 @@ func buildCmd(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd
 		return nil, func() {}, err
 	}
 	return cmd, cleanup, nil
+}
+
+func (r *Runner) expandArgv(p *ExecPlan, env *Env) ([]string, error) {
+	if p == nil {
+		return nil, nil
+	}
+	if p.Call == nil {
+		return p.Argv, nil
+	}
+	return ExpandCall(p.Call, env)
 }
 
 func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout *io.Writer) ([]*os.File, error) {

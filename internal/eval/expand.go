@@ -67,6 +67,28 @@ func ExpandCall(n *parse.Node, env *Env) ([]string, error) {
 	return expandArgs(n.Left, env)
 }
 
+// ExpandValue expands a value node for assignments.
+func ExpandValue(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return []string{}, nil
+	}
+	switch n.Kind {
+	case parse.KParen:
+		return normalizeEmpty(expandArgs(n.Left, env))
+	case parse.KWords, parse.KArgList:
+		return normalizeEmpty(expandArgs(n, env))
+	default:
+		vals, err := ExpandWord(n, env)
+		if err != nil {
+			return nil, err
+		}
+		if vals == nil {
+			return []string{}, nil
+		}
+		return vals, nil
+	}
+}
+
 func expandArgs(n *parse.Node, env *Env) ([]string, error) {
 	if n == nil {
 		return nil, nil
@@ -85,6 +107,16 @@ func expandArgs(n *parse.Node, env *Env) ([]string, error) {
 	vals, err := ExpandWord(n, env)
 	if err != nil {
 		return nil, err
+	}
+	return vals, nil
+}
+
+func normalizeEmpty(vals []string, err error) ([]string, error) {
+	if err != nil {
+		return nil, err
+	}
+	if vals == nil {
+		return []string{}, nil
 	}
 	return vals, nil
 }
