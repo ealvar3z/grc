@@ -19,19 +19,20 @@ func dumpPlan(b *strings.Builder, p *ExecPlan, indent int) {
 	pad := strings.Repeat(" ", indent)
 	fmt.Fprintf(b, "%s- %s\n", pad, planLine(p))
 	if p.PipeTo != nil {
-		fmt.Fprintf(b, "%s  pipe->\n", pad)
+		fmt.Fprintf(b, "%s  PIPE->\n", pad)
 		dumpPlan(b, p.PipeTo, indent+4)
 	}
 	if p.IfOK != nil {
-		fmt.Fprintf(b, "%s  ifok->\n", pad)
+		fmt.Fprintf(b, "%s  IFOK->\n", pad)
 		dumpPlan(b, p.IfOK, indent+4)
 	}
 	if p.IfFail != nil {
-		fmt.Fprintf(b, "%s  iffail->\n", pad)
+		fmt.Fprintf(b, "%s  IFFAIL->\n", pad)
 		dumpPlan(b, p.IfFail, indent+4)
 	}
 	if p.Next != nil {
-		dumpPlan(b, p.Next, indent)
+		fmt.Fprintf(b, "%s  NEXT->\n", pad)
+		dumpPlan(b, p.Next, indent+4)
 	}
 }
 

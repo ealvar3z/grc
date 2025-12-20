@@ -36,6 +36,31 @@ func TestRunSimple(t *testing.T) {
 	}
 }
 
+func TestTraceSimple(t *testing.T) {
+	if !haveCmd(t, "printf") {
+		t.Skip("printf not available")
+	}
+	env := NewEnv(nil)
+	ast, err := parse.ParseAll(strings.NewReader("printf hi\n"))
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, env)
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	var out bytes.Buffer
+	var trace bytes.Buffer
+	runner := &Runner{Env: env, Trace: true, TraceWriter: &trace}
+	res := runner.RunPlan(plan, strings.NewReader(""), &out, io.Discard)
+	if res.Status != 0 {
+		t.Fatalf("expected status 0, got %d", res.Status)
+	}
+	if !strings.Contains(trace.String(), "+ printf hi") {
+		t.Fatalf("unexpected trace: %q", trace.String())
+	}
+}
+
 func TestRunPipe(t *testing.T) {
 	if !haveCmd(t, "printf") || !haveCmd(t, "wc") {
 		t.Skip("printf or wc not available")

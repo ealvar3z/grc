@@ -151,10 +151,11 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	if len(argv) == 0 {
 		return 0
 	}
-	r.traceCmd(p, argv, execEnv)
 	if def, ok := execEnv.GetFunc(argv[0]); ok {
+		r.traceFunc(def.Name, p, argv, execEnv)
 		return r.runFuncCall(def, argv, p, execEnv, stdin, stdout, stderr)
 	}
+	r.traceCmd(p, argv, execEnv)
 	if builtin, ok := r.Builtins[argv[0]]; ok {
 		return r.runBuiltin(builtin, argv, p, execEnv, stdin, stdout, stderr)
 	}
@@ -274,6 +275,22 @@ func (r *Runner) traceCmd(p *ExecPlan, argv []string, execEnv *Env) {
 		parts = append(parts, formatAssign(pref.Name, vals))
 	}
 	parts = append(parts, argv...)
+	fmt.Fprintf(r.TraceWriter, "+ %s\n", strings.Join(parts, " "))
+}
+
+func (r *Runner) traceFunc(name string, p *ExecPlan, argv []string, execEnv *Env) {
+	if !r.Trace || r.TraceWriter == nil {
+		return
+	}
+	var parts []string
+	for _, pref := range p.Prefix {
+		vals, _ := ExpandValue(pref.Val, execEnv)
+		parts = append(parts, formatAssign(pref.Name, vals))
+	}
+	parts = append(parts, "fn", name)
+	if len(argv) > 1 {
+		parts = append(parts, argv[1:]...)
+	}
 	fmt.Fprintf(r.TraceWriter, "+ %s\n", strings.Join(parts, " "))
 }
 
