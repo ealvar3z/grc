@@ -83,3 +83,83 @@ func TestPlanPipe(t *testing.T) {
 		t.Fatalf("unexpected right argv: %v", plan.PipeTo.Argv)
 	}
 }
+
+func TestPlanSeq(t *testing.T) {
+	ast, err := parse.Parse(strings.NewReader("a;b\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, NewEnv(nil))
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if plan == nil || plan.Next == nil {
+		t.Fatalf("expected Next plan")
+	}
+	if len(plan.Argv) == 0 || plan.Argv[0] != "a" {
+		t.Fatalf("unexpected left argv: %v", plan.Argv)
+	}
+	if len(plan.Next.Argv) == 0 || plan.Next.Argv[0] != "b" {
+		t.Fatalf("unexpected right argv: %v", plan.Next.Argv)
+	}
+}
+
+func TestPlanBackground(t *testing.T) {
+	ast, err := parse.Parse(strings.NewReader("a&\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, NewEnv(nil))
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if plan == nil {
+		t.Fatalf("expected non-nil plan")
+	}
+	if !plan.Background {
+		t.Fatalf("expected Background=true")
+	}
+	if len(plan.Argv) == 0 || plan.Argv[0] != "a" {
+		t.Fatalf("unexpected argv: %v", plan.Argv)
+	}
+}
+
+func TestPlanAnd(t *testing.T) {
+	ast, err := parse.Parse(strings.NewReader("a&&b\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, NewEnv(nil))
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if plan == nil || plan.IfOK == nil {
+		t.Fatalf("expected IfOK plan")
+	}
+	if len(plan.Argv) == 0 || plan.Argv[0] != "a" {
+		t.Fatalf("unexpected left argv: %v", plan.Argv)
+	}
+	if len(plan.IfOK.Argv) == 0 || plan.IfOK.Argv[0] != "b" {
+		t.Fatalf("unexpected right argv: %v", plan.IfOK.Argv)
+	}
+}
+
+func TestPlanOr(t *testing.T) {
+	ast, err := parse.Parse(strings.NewReader("a||b\n"))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	plan, err := BuildPlan(ast, NewEnv(nil))
+	if err != nil {
+		t.Fatalf("BuildPlan returned error: %v", err)
+	}
+	if plan == nil || plan.IfFail == nil {
+		t.Fatalf("expected IfFail plan")
+	}
+	if len(plan.Argv) == 0 || plan.Argv[0] != "a" {
+		t.Fatalf("unexpected left argv: %v", plan.Argv)
+	}
+	if len(plan.IfFail.Argv) == 0 || plan.IfFail.Argv[0] != "b" {
+		t.Fatalf("unexpected right argv: %v", plan.IfFail.Argv)
+	}
+}
