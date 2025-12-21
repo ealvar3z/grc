@@ -1,5 +1,8 @@
 GRC
 
+Warning: this is a beta shell intended for rc-style scripting and interactive use.
+Do not run as root.
+
 This repository is a minimal Go module for a shell-like parser. It contains a
 small lexer and a goyacc-based grammar that builds a lightweight AST. The
 parser is intentionally minimal and focuses on structure rather than rc
@@ -15,4 +18,3 @@ Notes:
 - The AST records operator structure and word order, not full evaluation rules.
 - To run tests in this environment, use an absolute GOCACHE path, for example:
   GOCACHE=/home/eax/repos/grc/.gocache go test ./...
-

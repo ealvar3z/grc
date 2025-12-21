@@ -1,0 +1,4 @@
+echo hi
+sleep 1 &
+jobs
+yes | head

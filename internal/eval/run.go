@@ -121,9 +121,12 @@ func (r *Runner) runSingle(p *ExecPlan, stdin io.Reader, stdout, stderr io.Write
 
 func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	if background {
+		if status, ok := r.runPipeExternal(left, right, stdin, stdout, stderr, true); ok {
+			return status
+		}
 		return r.runPipeFallback(left, right, stdin, stdout, stderr, true)
 	}
-	if status, ok := r.runPipeExternal(left, right, stdin, stdout, stderr); ok {
+	if status, ok := r.runPipeExternal(left, right, stdin, stdout, stderr, false); ok {
 		return status
 	}
 	return r.runPipeFallback(left, right, stdin, stdout, stderr, false)
@@ -185,7 +188,7 @@ func (r *Runner) prepareExternal(p *ExecPlan) (stagePrep, bool, error) {
 	return stagePrep{argv: argv, env: execEnv}, true, nil
 }
 
-func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
+func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) (int, bool) {
 	leftPrep, ok, err := r.prepareExternal(left)
 	if err != nil {
 		return 1, true
@@ -237,6 +240,11 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 		return exitStatus(err), true
 	}
 
+	if background {
+		job := r.onBackgroundStart(leader, []int{leftCmd.Process.Pid, rightCmd.Process.Pid}, strings.Join(leftPrep.argv, " ")+" | "+strings.Join(rightPrep.argv, " "))
+		go r.waitJobPids(job, []int{leftCmd.Process.Pid, rightCmd.Process.Pid})
+		return 0, true
+	}
 	r.attachForeground(leader)
 	leftDone := make(chan int, 1)
 	rightDone := make(chan int, 1)
@@ -338,8 +346,12 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 		return exitStatus(err)
 	}
 	if background {
-		r.onBackgroundStart(cmd, argv)
-		go r.waitBackground(cmd, argv)
+		pgid, err := unix.Getpgid(cmd.Process.Pid)
+		if err != nil {
+			pgid = cmd.Process.Pid
+		}
+		job := r.onBackgroundStart(pgid, []int{cmd.Process.Pid}, strings.Join(argv, " "))
+		go r.waitJobPids(job, []int{cmd.Process.Pid})
 		return 0
 	}
 	r.attachForeground(cmd.Process.Pid)
@@ -427,21 +439,38 @@ func (r *Runner) startBackground(p *ExecPlan, stdin io.Reader, stdout, stderr io
 	return r.runStage(p, stdin, stdout, stderr, true)
 }
 
-func (r *Runner) onBackgroundStart(cmd *exec.Cmd, argv []string) {
-	pgid, err := unix.Getpgid(cmd.Process.Pid)
-	if err != nil {
-		pgid = cmd.Process.Pid
+func (r *Runner) onBackgroundStart(pgid int, pids []int, cmd string) *Job {
+	for _, pid := range pids {
+		r.addAPID(pid)
 	}
-	r.addAPID(cmd.Process.Pid)
-	r.addJob(pgid, cmd.Process.Pid, strings.Join(argv, " "))
+	return r.addJob(pgid, pids, cmd)
 }
 
-func (r *Runner) waitBackground(cmd *exec.Cmd, argv []string) {
-	err := cmd.Wait()
-	exit := exitStatus(err)
-	pgid, _ := unix.Getpgid(cmd.Process.Pid)
-	r.markJobDone(pgid, exit)
-	r.removeAPID(cmd.Process.Pid)
+func (r *Runner) waitJobPids(job *Job, pids []int) {
+	if job == nil {
+		return
+	}
+	exit := 0
+	for _, pid := range pids {
+		for {
+			var ws unix.WaitStatus
+			_, err := unix.Wait4(pid, &ws, 0, nil)
+			if err == unix.EINTR {
+				continue
+			}
+			if err != nil {
+				break
+			}
+			exit = ws.ExitStatus()
+			break
+		}
+		r.removeAPID(pid)
+	}
+	r.markJobDone(job.Pgid, exit)
+	select {
+	case job.Done <- exit:
+	default:
+	}
 }
 
 func (r *Runner) attachForeground(pid int) {
@@ -452,12 +481,7 @@ func (r *Runner) attachForeground(pid int) {
 	if err != nil {
 		return
 	}
-	if err := r.setForegroundPgrp(pgid); err != nil {
-		return
-	}
-	r.mu.Lock()
-	r.ForegroundPgid = pgid
-	r.mu.Unlock()
+	r.attachForegroundPgid(pgid)
 }
 
 func (r *Runner) restoreForeground() {
@@ -472,6 +496,18 @@ func (r *Runner) restoreForeground() {
 	}
 	r.mu.Lock()
 	r.ForegroundPgid = 0
+	r.mu.Unlock()
+}
+
+func (r *Runner) attachForegroundPgid(pgid int) {
+	if !r.Interactive || r.TTYFD <= 0 {
+		return
+	}
+	if err := r.setForegroundPgrp(pgid); err != nil {
+		return
+	}
+	r.mu.Lock()
+	r.ForegroundPgid = pgid
 	r.mu.Unlock()
 }
 

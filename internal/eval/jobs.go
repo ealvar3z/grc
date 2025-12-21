@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -8,17 +9,19 @@ import (
 
 // Job tracks a background job.
 type Job struct {
-	ID    int
-	Pgid  int
-	Pids  []int
-	Cmd   string
-	State string
-	Exit  int
+	ID       int
+	Pgid     int
+	Pids     []int
+	Cmd      string
+	State    string
+	Exit     int
+	Notified bool
+	Done     chan int
 }
 
-func (r *Runner) addJob(pgid int, pid int, cmd string) {
+func (r *Runner) addJob(pgid int, pids []int, cmd string) *Job {
 	if r == nil {
-		return
+		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -26,7 +29,16 @@ func (r *Runner) addJob(pgid int, pid int, cmd string) {
 		r.Jobs = make(map[int]*Job)
 	}
 	r.nextJobID++
-	r.Jobs[r.nextJobID] = &Job{ID: r.nextJobID, Pgid: pgid, Pids: []int{pid}, Cmd: cmd, State: "running"}
+	job := &Job{
+		ID:    r.nextJobID,
+		Pgid:  pgid,
+		Pids:  append([]int{}, pids...),
+		Cmd:   cmd,
+		State: "running",
+		Done:  make(chan int, 1),
+	}
+	r.Jobs[r.nextJobID] = job
+	return job
 }
 
 func (r *Runner) markJobDone(pgid int, exit int) {
@@ -39,9 +51,47 @@ func (r *Runner) markJobDone(pgid int, exit int) {
 		if job.Pgid == pgid {
 			job.State = "done"
 			job.Exit = exit
+			job.Notified = false
 			return
 		}
 	}
+}
+
+func (r *Runner) findJobByPgid(pgid int) *Job {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, job := range r.Jobs {
+		if job.Pgid == pgid {
+			return job
+		}
+	}
+	return nil
+}
+
+func (r *Runner) waitJob(job *Job) int {
+	if job == nil {
+		return 1
+	}
+	if job.State == "done" {
+		return job.Exit
+	}
+	exit, ok := <-job.Done
+	if ok {
+		return exit
+	}
+	return job.Exit
+}
+
+func (r *Runner) removeJob(id int) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.Jobs, id)
 }
 
 func (r *Runner) listJobs() []*Job {
@@ -54,7 +104,47 @@ func (r *Runner) listJobs() []*Job {
 	for _, job := range r.Jobs {
 		jobs = append(jobs, job)
 	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].ID < jobs[j].ID
+	})
 	return jobs
+}
+
+func (r *Runner) pruneJobs() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, job := range r.Jobs {
+		if job.State == "done" && job.Notified {
+			delete(r.Jobs, id)
+		}
+	}
+}
+
+func (r *Runner) getJob(id int) *Job {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Jobs[id]
+}
+
+func (r *Runner) lastJob() *Job {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var last *Job
+	for _, job := range r.Jobs {
+		if last == nil || job.ID > last.ID {
+			last = job
+		}
+	}
+	return last
 }
 
 func (r *Runner) addAPID(pid int) {
