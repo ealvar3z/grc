@@ -29,6 +29,7 @@ type ExecPlan struct {
 	AssignVal  *parse.Node
 	IfCond     *parse.Node
 	IfBody     *parse.Node
+	IfElse     *parse.Node
 	ForName    string
 	ForList    *parse.Node
 	ForBody    *parse.Node
@@ -57,13 +58,13 @@ const (
 	PlanNoop
 	PlanAssign
 	PlanIf
-	PlanIfNot
 	PlanFor
 	PlanWhile
 	PlanSwitch
 	PlanNot
 	PlanSubshell
 	PlanTwiddle
+	PlanFnRm
 )
 
 // BuildPlan converts an AST into an execution plan.
@@ -139,13 +140,24 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		Tail(left).IfFail = right
 		return left, nil
 	case parse.KBrace:
-		return BuildPlan(ast.Left, env)
+		if ast.Right == nil {
+			return BuildPlan(ast.Left, env)
+		}
+		plan, err := BuildPlan(ast.Left, env)
+		if err != nil {
+			return nil, err
+		}
+		if err := applyRedirsFromNode(plan, ast.Right, env); err != nil {
+			return nil, err
+		}
+		return plan, nil
 	case parse.KParen:
 		return BuildPlan(ast.Left, env)
 	case parse.KIf:
+		if ast.Right != nil && ast.Right.Kind == parse.KElse {
+			return &ExecPlan{Kind: PlanIf, IfCond: ast.Left, IfBody: ast.Right.Left, IfElse: ast.Right.Right}, nil
+		}
 		return &ExecPlan{Kind: PlanIf, IfCond: ast.Left, IfBody: ast.Right}, nil
-	case parse.KIfNot:
-		return &ExecPlan{Kind: PlanIfNot, IfBody: ast.Left}, nil
 	case parse.KFor:
 		name := fnName(ast.Left)
 		var list *parse.Node
@@ -157,12 +169,19 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		return &ExecPlan{Kind: PlanWhile, WhileCond: ast.Left, WhileBody: ast.Right}, nil
 	case parse.KSwitch:
 		return &ExecPlan{Kind: PlanSwitch, SwitchArg: ast.Left, SwitchBody: ast.Right}, nil
-	case parse.KNot:
+	case parse.KBang:
 		return &ExecPlan{Kind: PlanNot, NotBody: ast.Left}, nil
 	case parse.KSubshell:
 		return &ExecPlan{Kind: PlanSubshell, SubBody: ast.Left}, nil
-	case parse.KTwiddle:
+	case parse.KMatch:
 		return &ExecPlan{Kind: PlanTwiddle, MatchSubj: ast.Left, MatchPats: ast.Right}, nil
+	case parse.KFnRm:
+		name := fnName(ast.Left)
+		if name == "" {
+			return &ExecPlan{Kind: PlanNoop}, nil
+		}
+		def := &FuncDef{Name: name}
+		return &ExecPlan{Kind: PlanFnRm, Func: def}, nil
 	case parse.KRedir:
 		plan, err := BuildPlan(ast.Left, env)
 		if err != nil {
@@ -218,13 +237,73 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 			return nil, fmt.Errorf("assignment prefixes not supported")
 		}
 		return &ExecPlan{Kind: PlanAssign, AssignName: name, AssignVal: val}, nil
+	case parse.KPre:
+		return buildPlanPre(ast, env)
 	default:
 		return nil, fmt.Errorf("unsupported AST node: %v", ast.Kind)
 	}
 }
 
+func buildPlanPre(ast *parse.Node, env *Env) (*ExecPlan, error) {
+	prefixes, redirs, rest := splitPre(ast)
+	if rest == nil {
+		if len(prefixes) > 0 {
+			var head *ExecPlan
+			var tail *ExecPlan
+			for _, pref := range prefixes {
+				node := &ExecPlan{Kind: PlanAssign, AssignName: pref.Name, AssignVal: pref.Val}
+				if head == nil {
+					head = node
+					tail = node
+				} else {
+					tail.Next = node
+					tail = node
+				}
+			}
+			plan := head
+			for _, r := range redirs {
+				if err := applyRedirsFromNode(plan, r, env); err != nil {
+					return nil, err
+				}
+			}
+			return plan, nil
+		}
+		plan := &ExecPlan{Kind: PlanNoop}
+		for _, r := range redirs {
+			if err := applyRedirsFromNode(plan, r, env); err != nil {
+				return nil, err
+			}
+		}
+		return plan, nil
+	}
+	plan, err := BuildPlan(rest, env)
+	if err != nil {
+		return nil, err
+	}
+	if plan == nil {
+		return plan, nil
+	}
+	if len(prefixes) > 0 {
+		plan.Prefix = append(prefixes, plan.Prefix...)
+	}
+	for _, r := range redirs {
+		if err := applyRedirsFromNode(plan, r, env); err != nil {
+			return nil, err
+		}
+	}
+	return plan, nil
+}
+
 func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 	if n == nil || plan == nil {
+		return nil
+	}
+	if n.Kind == parse.KEpilog {
+		for _, child := range n.List {
+			if err := applyRedirsFromNode(plan, child, env); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	if n.Kind == parse.KRedir && len(n.List) > 0 {
@@ -246,6 +325,10 @@ func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 			return err
 		}
 		plan.Redirs = append(plan.Redirs, RedirPlan{Op: n.Tok, Target: target})
+		return nil
+	}
+	if n.Kind == parse.KDup {
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: "dup", Target: []string{fmt.Sprintf("%d=%d", n.I1, n.I2)}})
 		return nil
 	}
 	return nil
@@ -278,10 +361,6 @@ func assignParts(n *parse.Node) (string, *parse.Node, bool) {
 	if n == nil || n.Kind != parse.KAssign {
 		return "", nil, false
 	}
-	if n.Left != nil && n.Left.Kind == parse.KAssign && n.Left.Left != nil {
-		name := fnName(n.Left.Left)
-		return name, n.Left.Right, n.Right != nil
-	}
 	if n.Left != nil {
 		name := fnName(n.Left)
 		return name, n.Right, false
@@ -292,15 +371,37 @@ func assignParts(n *parse.Node) (string, *parse.Node, bool) {
 func splitPrefixAssign(n *parse.Node) ([]AssignPrefix, *parse.Node) {
 	var prefixes []AssignPrefix
 	cur := n
-	for cur != nil && cur.Kind == parse.KAssign && cur.Left != nil && cur.Left.Kind == parse.KAssign && cur.Right != nil {
-		name := fnName(cur.Left.Left)
+	for cur != nil && cur.Kind == parse.KAssign && cur.Right != nil {
+		name := fnName(cur.Left)
 		if name == "" {
 			break
 		}
-		prefixes = append(prefixes, AssignPrefix{Name: name, Val: cur.Left.Right})
+		prefixes = append(prefixes, AssignPrefix{Name: name, Val: cur.Right})
+		break
+	}
+	return prefixes, nil
+}
+
+func splitPre(n *parse.Node) ([]AssignPrefix, []*parse.Node, *parse.Node) {
+	var prefixes []AssignPrefix
+	var redirs []*parse.Node
+	cur := n
+	for cur != nil && cur.Kind == parse.KPre {
+		if cur.Left == nil {
+			break
+		}
+		switch cur.Left.Kind {
+		case parse.KAssign:
+			name := fnName(cur.Left.Left)
+			if name != "" {
+				prefixes = append(prefixes, AssignPrefix{Name: name, Val: cur.Left.Right})
+			}
+		case parse.KRedir, parse.KDup:
+			redirs = append(redirs, cur.Left)
+		}
 		cur = cur.Right
 	}
-	return prefixes, cur
+	return prefixes, redirs, cur
 }
 
 // Tail returns the last plan in the Next chain.

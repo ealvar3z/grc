@@ -1,0 +1,31 @@
+grc beta status
+
+grc is currently in beta.
+
+The core language and execution semantics are stable, but some features are
+intentionally incomplete or still being hardened.
+
+What works reliably
+- Interactive REPL with history
+- External programs, pipelines, and redirections
+- Background jobs and jobs/fg/bg
+- rc-style expansion and functions
+- Assignments (standalone and prefix)
+- Control flow: if/for/while/switch
+- $status and $apid
+
+Known limitations
+- Full-screen job control (vim/less) is still being tuned in some environments
+- Pipelines involving builtins or functions have best-effort job control
+- Here documents and ${} expansion are not implemented
+- fd duplication redirections are parsed but not yet executed
+- exec, wait, shift, ., ~ are not implemented
+- Quoting/escaping behavior is still being tightened
+
+Safety notes
+- Do not run grc as root
+- Signal handling and job control are implemented conservatively
+- Scripts written for grc should not assume POSIX shell behavior
+
+Versioning
+Breaking changes may occur until v1.0.0

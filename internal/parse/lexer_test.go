@@ -17,7 +17,7 @@ func lexPairs(input string) []tokPair {
 	for {
 		var lval grcSymType
 		tok := lx.Lex(&lval)
-		if tok == 0 {
+		if tok == 0 || tok == END {
 			break
 		}
 		pair := tokPair{tok: tok}

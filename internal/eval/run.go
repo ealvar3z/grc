@@ -18,21 +18,19 @@ import (
 
 // Runner executes execution plans.
 type Runner struct {
-	Env              *Env
-	Builtins         map[string]Builtin
-	Trace            bool
-	TraceWriter      io.Writer
-	Interactive      bool
-	TTYFD            int
-	ShellPgid        int
-	ForegroundPgid   int
-	mu               sync.Mutex
-	Jobs             map[int]*Job
-	nextJobID        int
-	exitRequested    bool
-	exitCode         int
-	lastIfCondStatus int
-	lastIfCondValid  bool
+	Env            *Env
+	Builtins       map[string]Builtin
+	Trace          bool
+	TraceWriter    io.Writer
+	Interactive    bool
+	TTYFD          int
+	ShellPgid      int
+	ForegroundPgid int
+	mu             sync.Mutex
+	Jobs           map[int]*Job
+	nextJobID      int
+	exitRequested  bool
+	exitCode       int
 }
 
 // ExitRequested reports whether an exit builtin has been invoked.
@@ -90,9 +88,6 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	status := 0
 	for cur := p; cur != nil; cur = cur.Next {
-		if r.lastIfCondValid && cur.Kind != PlanIfNot {
-			r.lastIfCondValid = false
-		}
 		if r.exitRequested {
 			return r.exitCode
 		}
@@ -280,25 +275,13 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	switch p.Kind {
 	case PlanIf:
 		condStatus := r.runAST(p.IfCond, stdin, stdout, stderr)
-		status := condStatus
 		if condStatus == 0 {
-			status = r.runAST(p.IfBody, stdin, stdout, stderr)
-		}
-		r.lastIfCondStatus = condStatus
-		r.lastIfCondValid = true
-		return status
-	case PlanIfNot:
-		if !r.lastIfCondValid {
-			if stderr != nil {
-				fmt.Fprintln(stderr, "if not without preceding if")
-			}
-			return 1
-		}
-		r.lastIfCondValid = false
-		if r.lastIfCondStatus != 0 {
 			return r.runAST(p.IfBody, stdin, stdout, stderr)
 		}
-		return 0
+		if p.IfElse != nil {
+			return r.runAST(p.IfElse, stdin, stdout, stderr)
+		}
+		return condStatus
 	case PlanFor:
 		return r.runFor(p, stdin, stdout, stderr)
 	case PlanWhile:
@@ -316,6 +299,11 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		return r.runASTWithEnv(child, p.SubBody, stdin, stdout, stderr)
 	case PlanTwiddle:
 		return r.runMatch(p)
+	case PlanFnRm:
+		if p.Func != nil {
+			r.Env.UnsetFunc(p.Func.Name)
+		}
+		return 0
 	}
 	if p.Kind == PlanFnDef {
 		if p.Func != nil && p.Func.Name != "" {

@@ -24,6 +24,11 @@ type Lexer struct {
 	prevConcat    bool
 	prevWasDollar bool
 	sawSpace      bool
+	wordState     int
+	endSent       bool
+
+	fdLeft  int
+	fdRight int
 }
 
 type lexRune struct {
@@ -34,6 +39,17 @@ type lexRune struct {
 	nextCol  int
 	err      error
 }
+
+const (
+	wordNW = iota
+	wordRW
+	wordKW
+)
+
+const (
+	fdUnset  = -9
+	fdClosed = -1
+)
 
 func NewLexer(rd io.Reader) *Lexer {
 	return &Lexer{r: bufio.NewReader(rd), line: 1}
@@ -55,7 +71,11 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 	for {
 		r, line, col, err := lx.readRune()
 		if err != nil {
-			return 0
+			if lx.endSent {
+				return 0
+			}
+			lx.endSent = true
+			return END
 		}
 
 		switch r {
@@ -65,6 +85,7 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 				_, _, _, _ = lx.readRune()
 				lx.sawSpace = true
 				lx.prevWasDollar = false
+				lx.wordState = wordNW
 				continue
 			}
 			word := lx.readWordTail(r)
@@ -73,12 +94,14 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			}
 			node := W(word)
 			node.Pos = Pos{Line: line, Col: col}
+			lx.wordState = wordRW
 			return lx.emitToken(WORD, node, lval)
 		case ' ', '\t':
 			lx.sawSpace = true
 			if lx.prevWasDollar {
 				lx.prevWasDollar = false
 			}
+			lx.wordState = wordNW
 			continue
 		case '#':
 			if lx.prevWasDollar && !lx.sawSpace {
@@ -89,31 +112,40 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			lx.prevConcat = false
 			lx.prevWasDollar = false
 			lx.sawSpace = false
+			lx.wordState = wordNW
 			return int(r)
 		case '&':
 			if lx.consumeIf('&') {
 				return lx.emitToken(ANDAND, nil, lval)
 			}
+			lx.wordState = wordNW
 			return lx.emitToken(int(r), nil, lval)
 		case '|':
 			if lx.consumeIf('|') {
 				return lx.emitToken(OROR, nil, lval)
 			}
-			return lx.emitToken(int(r), nil, lval)
+			lx.readPair()
+			left := lx.fdLeft
+			right := lx.fdRight
+			if left == fdUnset {
+				left = 1
+			}
+			if right == fdUnset {
+				right = 0
+			}
+			if right == fdClosed {
+				lx.Error("expected digit after '='")
+				return HUH
+			}
+			node := &Node{Kind: KPipe, I1: left, I2: right, Pos: Pos{Line: line, Col: col}}
+			lx.wordState = wordNW
+			return lx.emitToken(PIPE, node, lval)
 		case '>':
-			if lx.consumeIf('>') {
-				node := &Node{Kind: KRedir, Tok: ">>", Pos: Pos{Line: line, Col: col}}
-				return lx.emitToken(REDIR, node, lval)
-			}
-			node := &Node{Kind: KRedir, Tok: ">", Pos: Pos{Line: line, Col: col}}
-			return lx.emitToken(REDIR, node, lval)
+			node, tok := lx.readRedir('>', line, col)
+			return lx.emitToken(tok, node, lval)
 		case '<':
-			if lx.consumeIf('>') {
-				node := &Node{Kind: KRedir, Tok: "<>", Pos: Pos{Line: line, Col: col}}
-				return lx.emitToken(REDIR, node, lval)
-			}
-			node := &Node{Kind: KRedir, Tok: "<", Pos: Pos{Line: line, Col: col}}
-			return lx.emitToken(REDIR, node, lval)
+			node, tok := lx.readRedir('<', line, col)
+			return lx.emitToken(tok, node, lval)
 		case '\'':
 			text, ok := lx.readSingleQuoted()
 			if !ok {
@@ -122,8 +154,47 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			}
 			node := W(text)
 			node.Pos = Pos{Line: line, Col: col}
+			lx.wordState = wordRW
 			return lx.emitToken(WORD, node, lval)
-		case ';', '(', ')', '{', '}', '=', '^', '$', '"', '`':
+		case '(':
+			if lx.wordState == wordRW && !lx.sawSpace {
+				lx.wordState = wordNW
+				return lx.emitToken(SUB, nil, lval)
+			}
+			lx.wordState = wordNW
+			return lx.emitToken(int(r), nil, lval)
+		case ')', '{', '}', ';', '^':
+			lx.wordState = wordNW
+			return lx.emitToken(int(r), nil, lval)
+		case '=':
+			lx.wordState = wordKW
+			return lx.emitToken(int(r), nil, lval)
+		case '@':
+			lx.wordState = wordKW
+			return lx.emitToken(SUBSHELL, nil, lval)
+		case '!':
+			lx.wordState = wordKW
+			return lx.emitToken(BANG, nil, lval)
+		case '~':
+			lx.wordState = wordKW
+			return lx.emitToken(TWIDDLE, nil, lval)
+		case '$':
+			next, _, _, err := lx.peekRune()
+			if err == nil && next == '#' {
+				_, _, _, _ = lx.readRune()
+				return lx.emitToken(COUNT, nil, lval)
+			}
+			if err == nil && (next == '^' || next == '"') {
+				_, _, _, _ = lx.readRune()
+				return lx.emitToken(FLAT, nil, lval)
+			}
+			return lx.emitToken(int(r), nil, lval)
+		case '`':
+			if lx.consumeIf('`') {
+				return lx.emitToken(BACKBACK, nil, lval)
+			}
+			return lx.emitToken(int(r), nil, lval)
+		case '"':
 			return lx.emitToken(int(r), nil, lval)
 		default:
 			word := ""
@@ -138,8 +209,10 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			node := W(word)
 			node.Pos = Pos{Line: line, Col: col}
 			if tok, ok := keywordToken(word); ok {
+				lx.wordState = wordKW
 				return lx.emitToken(tok, node, lval)
 			}
+			lx.wordState = wordRW
 			return lx.emitToken(WORD, node, lval)
 		}
 	}
@@ -161,12 +234,14 @@ func keywordToken(word string) (int, bool) {
 		return WHILE, true
 	case "if":
 		return IF, true
-	case "not":
-		return NOT, true
 	case "fn":
 		return FN, true
 	case "switch":
 		return SWITCH, true
+	case "else":
+		return ELSE, true
+	case "case":
+		return CASE, true
 	default:
 		return 0, false
 	}
@@ -230,7 +305,7 @@ func (lx *Lexer) readIdentTail(first rune) string {
 
 func isWordBreak(r rune) bool {
 	switch r {
-	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>', '#':
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>', '#', '@', '!', '~', '\\':
 		return true
 	default:
 		return false
@@ -374,7 +449,7 @@ func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
 
 func canConcatToken(tok int) bool {
 	switch tok {
-	case WORD, int('`'), int('"'):
+	case WORD, int('`'), int('"'), BACKBACK:
 		return true
 	default:
 		return false
@@ -383,7 +458,7 @@ func canConcatToken(tok int) bool {
 
 func canConcatTokenAfterDollar(tok int) bool {
 	switch tok {
-	case WORD, COUNT, int('`'), int('"'):
+	case WORD, COUNT, FLAT, int('`'), int('"'), BACKBACK:
 		return true
 	default:
 		return false
@@ -406,4 +481,113 @@ func (lx *Lexer) skipComment() int {
 			return int('\n')
 		}
 	}
+}
+
+func (lx *Lexer) readRedir(op rune, line, col int) (*Node, int) {
+	tok := REDIR
+	rtype := ""
+	if op == '>' {
+		if lx.consumeIf('>') {
+			rtype = ">>"
+		} else {
+			rtype = ">"
+		}
+	} else {
+		if lx.consumeIf('<') {
+			if lx.consumeIf('<') {
+				rtype = "<<<"
+			} else {
+				rtype = "<<"
+			}
+		} else {
+			rtype = "<"
+		}
+	}
+	node := &Node{Kind: KRedir, Tok: rtype, Pos: Pos{Line: line, Col: col}}
+	if rtype == "<<" || rtype == "<<<" {
+		tok = SREDIR
+	}
+	if lx.readPair() {
+		if lx.fdRight == fdUnset {
+			node.I1 = lx.fdLeft
+			return node, tok
+		}
+		dup := &Node{Kind: KDup, Tok: rtype, I1: lx.fdLeft, I2: lx.fdRight, Pos: Pos{Line: line, Col: col}}
+		return dup, DUP
+	}
+	return node, tok
+}
+
+func (lx *Lexer) readPair() bool {
+	r, _, _, err := lx.peekRune()
+	if err != nil || r != '[' {
+		lx.fdLeft = fdUnset
+		lx.fdRight = fdUnset
+		return false
+	}
+	_, _, _, _ = lx.readRune()
+	lx.fdLeft = fdUnset
+	lx.fdRight = fdUnset
+	n, ok := lx.readNumber()
+	if !ok {
+		lx.Error("expected digit after '['")
+		return false
+	}
+	lx.fdLeft = n
+	r, _, _, err = lx.readRune()
+	if err != nil {
+		return false
+	}
+	switch r {
+	case ']':
+		return true
+	case '=':
+		r, _, _, err = lx.peekRune()
+		if err != nil {
+			return false
+		}
+		if r == ']' {
+			_, _, _, _ = lx.readRune()
+			lx.fdRight = fdClosed
+			return true
+		}
+		n, ok := lx.readNumber()
+		if !ok {
+			lx.Error("expected digit or ']' after '='")
+			return false
+		}
+		lx.fdRight = n
+		r, _, _, err = lx.readRune()
+		if err != nil || r != ']' {
+			lx.Error("expected ']' after digit")
+			return false
+		}
+		return true
+	default:
+		lx.Error("expected '=' or ']' after digit")
+		return false
+	}
+}
+
+func (lx *Lexer) readNumber() (int, bool) {
+	r, _, _, err := lx.readRune()
+	if err != nil {
+		return 0, false
+	}
+	if r < '0' || r > '9' {
+		return 0, false
+	}
+	n := int(r - '0')
+	for {
+		r, _, _, err := lx.peekRune()
+		if err != nil {
+			break
+		}
+		if r < '0' || r > '9' {
+			break
+		}
+		_, _, _, _ = lx.readRune()
+		n = n*10 + int(r-'0')
+	}
+	return n, true
 }

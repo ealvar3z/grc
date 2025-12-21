@@ -94,6 +94,14 @@ func (e *Env) GetFunc(name string) (FuncDef, bool) {
 	return FuncDef{}, false
 }
 
+// UnsetFunc removes a function from the current environment.
+func (e *Env) UnsetFunc(name string) {
+	if e == nil || e.funcs == nil {
+		return
+	}
+	delete(e.funcs, name)
+}
+
 // SetStatus sets the status variable to the numeric exit code.
 func (e *Env) SetStatus(code int) {
 	e.Set("status", []string{strconv.Itoa(code)})

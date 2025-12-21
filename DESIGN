@@ -1,0 +1,46 @@
+grc design
+
+goal
+  Provide a Go implementation of Plan 9 rc semantics, not POSIX compatibility.
+
+high-level architecture
+  Input
+    -> Lexer / Parser (goyacc)
+    -> AST (structural)
+    -> Expansion (lists, concat, glob, backquote)
+    -> Execution Plan
+    -> Runner (execution)
+
+parsing
+  The grammar is derived from rc and produces a structural AST. The parser does
+  not execute commands or expand variables. Nodes represent syntax, not behavior.
+
+ast
+  Node.Kind enumerates operators and forms such as:
+  - KSeq, KPipe, KAnd, KOr for control flow
+  - KCall, KWord, KConcat, KDollar for command and words
+  - KRedir, KDup for redirections
+  - KFnDef and KFnRm for functions
+
+expansion
+  Expansion is the core of rc semantics.
+  - Variables are lists; $name expands to []string
+  - Concatenation uses rc rules (pairwise, distributive, or error)
+  - Globbing is applied after variable and concat expansion
+  - Backquotes run a subcommand and split stdout on $ifs
+
+environment
+  The environment is a dynamic scope chain. It stores list variables and
+  function definitions. Prefix assignments create a child env for a call.
+
+execution plan
+  The AST is lowered into an explicit ExecPlan graph. This enables deterministic
+  evaluation of sequencing, conditionals, pipes, background jobs, and redirs.
+
+runner
+  The Runner executes a plan, updating $status and applying redirections and
+  pipes. Builtins run without exec. External commands use os/exec.
+
+debugging
+  - DumpPlan provides a stable, indented plan description.
+  - -x traces expanded argv before execution.

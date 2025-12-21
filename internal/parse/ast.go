@@ -11,6 +11,9 @@ const (
 	KOr
 	KAssign
 	KRedir
+	KDup
+	KPre
+	KEpilog
 	KCall
 	KWord
 	KWords
@@ -19,20 +22,28 @@ const (
 	KParen
 	KSubshell
 	KFnDef
+	KFnRm
 	KFn
 	KSwitch
+	KCase
+	KCbody
+	KIf
+	KElse
+	KWhile
+	KFor
+	KMatch
+	KVar
 	KSub
 	KQuote
 	KDollar
 	KCount
+	KFlat
 	KBackquote
 	KConcat
-	KIf
-	KIfNot
-	KFor
-	KWhile
-	KNot
-	KTwiddle
+	KBang
+	KArgs
+	KLappend
+	KNmpipe
 )
 
 // Pos tracks a source position.
@@ -48,6 +59,8 @@ type Node struct {
 	Pos         Pos
 	Left, Right *Node
 	List        []*Node
+	I1          int
+	I2          int
 }
 
 // N constructs a binary node.

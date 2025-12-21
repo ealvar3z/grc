@@ -1,110 +1,67 @@
-# grc usage guide
+grc usage guide
 
 This guide assumes familiarity with the Plan 9 rc shell.
 
----
-
-## Variables are lists
-
-```rc
-x=hello
-y=(a b c)
-echo $x
-echo $y
-```
+Variables are lists
+  x=hello
+  y=(a b c)
+  echo $x
+  echo $y
 
 Free carets and concatenation
+  x=foo
+  echo $x.c        # expands as $x^.c
+  echo $x^bar
 
-```rc
-x=foo
-echo $x.c        # expands as $x^.c
-echo $x^bar
-```
-
-Concatenation rules:
-
+Concatenation rules
 - pairwise if lengths match
 - distributive if one side has length 1
 - error otherwise
 
 Assignments
-
 Standalone:
-
-```rc
-x=world
-echo $x
-```
+  x=world
+  echo $x
 
 Prefix (scoped):
-
-```rc
-x=parent
-x=child echo $x
-echo $x
-```
+  x=parent
+  x=child echo $x
+  echo $x
 
 Functions
-
-```rc
-fn greet {
-    echo hello $1
-}
-
-greet world
-```
+  fn greet {
+      echo hello $1
+  }
+  greet world
 
 Dynamic scoping applies.
 
 Command substitution
-
-```rc
-echo `{ echo a b }
-```
+  echo `{ echo a b }
 
 Backquotes produce lists split on whitespace.
 
 Globbing
-
-```rc
-echo *.go
-```
+  echo *.go
 
 If a glob matches nothing, it remains literal.
 
 Background jobs
-
-```rc
-sleep 5 &
-jobs
-```
+  sleep 5 &
+  jobs
 
 Background PIDs are tracked in $apid.
 
 Prompt
-
 Set the prompt using a list:
-
-```rc
-prompt=(β grc)
-```
+  prompt=(β grc)
 
 Debugging
-
 Print the execution plan:
-
-```sh
-grc -p
-```
+  grc -p
 
 Trace executed commands:
-
-```sh
-grc -x
-```
+  grc -x
 
 Parse only:
-
-```sh
-grc -n
-```
+  grc -n

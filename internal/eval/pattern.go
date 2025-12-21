@@ -20,6 +20,9 @@ func switchCases(n *parse.Node, env *Env) ([]caseBlock, error) {
 	if n.Kind == parse.KBrace {
 		body = n.Left
 	}
+	if body.Kind == parse.KCbody {
+		return switchCasesFromCbody(body, env)
+	}
 	cmds := flattenSeq(body)
 	var out []caseBlock
 	var cur *caseBlock
@@ -45,7 +48,43 @@ func switchCases(n *parse.Node, env *Env) ([]caseBlock, error) {
 	return out, nil
 }
 
+func switchCasesFromCbody(n *parse.Node, env *Env) ([]caseBlock, error) {
+	var out []caseBlock
+	var cur *caseBlock
+	for curNode := n; curNode != nil && curNode.Kind == parse.KCbody; curNode = curNode.Right {
+		cmd := curNode.Left
+		if cmd == nil {
+			continue
+		}
+		patterns, ok, err := casePatterns(cmd, env)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			if cur != nil {
+				out = append(out, *cur)
+			}
+			cur = &caseBlock{Patterns: patterns}
+			continue
+		}
+		if cur != nil {
+			cur.Body = appendSeq(cur.Body, cmd)
+		}
+	}
+	if cur != nil {
+		out = append(out, *cur)
+	}
+	return out, nil
+}
+
 func casePatterns(cmd *parse.Node, env *Env) ([]string, bool, error) {
+	if cmd != nil && cmd.Kind == parse.KCase {
+		pats, err := ExpandWordsNoGlob(cmd.Left, env)
+		if err != nil {
+			return nil, false, err
+		}
+		return pats, true, nil
+	}
 	call := unwrapCall(cmd)
 	if call == nil {
 		return nil, false, nil

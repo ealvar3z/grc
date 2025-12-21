@@ -1,0 +1,11 @@
+Changelog
+
+Unreleased
+- Added rc/ upstream C source and documentation for reference.
+- Reworked parser/lexer toward rc grammar and tokenization; expanded AST kinds.
+- Added rc-style expansion features (free carets, $ifs, $#, $^, $", backquotes).
+- Added control-flow and function plan support with dynamic scoping.
+- Added job tracking plus jobs/fg/bg/apid builtins.
+- Added ParseAll and multi-line parsing support.
+- Converted docs to plaintext and added LICENSE from rc/COPYING.
+- Cleaned up unused generated artifacts.

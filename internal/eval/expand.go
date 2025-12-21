@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"grc/internal/parse"
@@ -52,21 +53,56 @@ func expandWordBase(n *parse.Node, env *Env) ([]string, error) {
 			return nil, fmt.Errorf("concat length mismatch")
 		}
 		return out, nil
-	case parse.KDollar:
+	case parse.KVar:
 		if n.Left == nil || n.Left.Kind != parse.KWord {
-			return nil, fmt.Errorf("unsupported dollar node")
+			return nil, fmt.Errorf("unsupported var node")
 		}
 		vals := env.Get(n.Left.Tok)
 		if vals == nil {
 			return []string{}, nil
 		}
+		if n.Right != nil {
+			subs, err := expandArgsNoGlob(n.Right, env)
+			if err != nil {
+				return nil, err
+			}
+			return applySubscript(vals, subs), nil
+		}
 		return vals, nil
+	case parse.KFlat:
+		if n.Left == nil || n.Left.Kind != parse.KWord {
+			return nil, fmt.Errorf("unsupported flat node")
+		}
+		vals := env.Get(n.Left.Tok)
+		if vals == nil || len(vals) == 0 {
+			return []string{""}, nil
+		}
+		return []string{strings.Join(vals, " ")}, nil
+	case parse.KCount:
+		if n.Left == nil || n.Left.Kind != parse.KWord {
+			return nil, fmt.Errorf("unsupported count node")
+		}
+		vals := env.Get(n.Left.Tok)
+		return []string{fmt.Sprintf("%d", len(vals))}, nil
+	case parse.KSub:
+		vals, err := expandWordBase(n.Left, env)
+		if err != nil {
+			return nil, err
+		}
+		if len(vals) == 0 {
+			return []string{}, nil
+		}
+		subs, err := expandArgsNoGlob(n.Right, env)
+		if err != nil {
+			return nil, err
+		}
+		return applySubscript(vals, subs), nil
 	case parse.KBackquote:
 		if env == nil {
 			env = NewEnv(nil)
 		}
 		child := NewChild(env)
-		plan, err := BuildPlan(n.Left, child)
+		plan, err := BuildPlan(n.Right, child)
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +112,7 @@ func expandWordBase(n *parse.Node, env *Env) ([]string, error) {
 		if env != nil {
 			env.SetStatus(res.Status)
 		}
-		fields := strings.Fields(out.String())
+		fields := splitFields(out.String(), env, n.Left)
 		if len(fields) == 0 {
 			return []string{}, nil
 		}
@@ -228,4 +264,98 @@ func GlobWord(w string) ([]string, error) {
 	}
 	sort.Strings(matches)
 	return matches, nil
+}
+
+func splitFields(s string, env *Env, ifsOverride *parse.Node) []string {
+	if s == "" {
+		return []string{}
+	}
+	ifs := []rune{' ', '\t', '\n'}
+	if env != nil {
+		if ifsOverride != nil {
+			vals, err := ExpandWordsNoGlob(ifsOverride, env)
+			if err == nil && len(vals) > 0 {
+				ifs = []rune(strings.Join(vals, ""))
+			}
+		} else if vals := env.Get("ifs"); len(vals) > 0 {
+			ifs = []rune(strings.Join(vals, ""))
+		}
+	}
+	isSep := make(map[rune]bool, len(ifs))
+	for _, r := range ifs {
+		isSep[r] = true
+	}
+	f := func(r rune) bool {
+		return isSep[r]
+	}
+	return strings.FieldsFunc(s, f)
+}
+
+func applySubscript(vals, subs []string) []string {
+	if len(vals) == 0 || len(subs) == 0 {
+		return []string{}
+	}
+	var out []string
+	for _, sub := range subs {
+		start, end, ok := parseRange(sub)
+		if !ok {
+			continue
+		}
+		if end == 0 {
+			end = len(vals)
+		}
+		if start < 1 {
+			continue
+		}
+		if start > len(vals) {
+			continue
+		}
+		if end > len(vals) {
+			end = len(vals)
+		}
+		for i := start - 1; i < end; i++ {
+			out = append(out, vals[i])
+		}
+	}
+	return out
+}
+
+func parseRange(s string) (int, int, bool) {
+	if s == "" {
+		return 0, 0, false
+	}
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		start, ok := parsePositive(parts[0])
+		if !ok {
+			return 0, 0, false
+		}
+		if parts[1] == "" {
+			return start, 0, true
+		}
+		end, ok := parsePositive(parts[1])
+		if !ok {
+			return 0, 0, false
+		}
+		if end < start {
+			return 0, 0, false
+		}
+		return start, end, true
+	}
+	start, ok := parsePositive(s)
+	if !ok {
+		return 0, 0, false
+	}
+	return start, start, true
+}
+
+func parsePositive(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
 }

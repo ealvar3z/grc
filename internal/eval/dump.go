@@ -72,14 +72,14 @@ func planKindName(k PlanKind) string {
 		return "CMD"
 	case PlanFnDef:
 		return "FNDEF"
+	case PlanFnRm:
+		return "FNRM"
 	case PlanNoop:
 		return "NOOP"
 	case PlanAssign:
 		return "ASSIGN"
 	case PlanIf:
 		return "IF"
-	case PlanIfNot:
-		return "IFNOT"
 	case PlanFor:
 		return "FOR"
 	case PlanWhile:

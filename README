@@ -1,0 +1,61 @@
+grc - a Go implementation of the Plan 9 rc shell
+
+`grc` is an interactive and scripting shell for Unix systems, implemented in Go,
+with semantics derived from the Plan 9 rc shell.
+
+rc is a list-oriented command language. Variables hold lists, expansion is
+structural, and control flow is explicit. grc aims to preserve these semantics
+while running on a modern Unix system.
+
+This project is beta-quality but is usable for day-to-day interactive work.
+
+Features
+- List-valued variables
+- $ expansion with rc semantics
+- Free carets and ^ concatenation
+- Globbing with literal fallback
+- Backquote command substitution
+- Functions with dynamic scoping
+- Assignments (standalone and prefix)
+- Control flow: if/for/while/switch
+- Pipes, redirections, background jobs
+- $status and $apid
+- Interactive REPL with history and prompt
+- Execution tracing and plan inspection
+
+Non-goals
+grc is not a POSIX shell and does not aim to be compatible with:
+- bash / zsh extensions
+- POSIX parameter expansion
+- brace expansion
+- full job control beyond minimal jobs/fg/bg
+
+Installation
+  go build ./cmd/grc
+
+Run interactively:
+  ./grc
+
+Run a script:
+  ./grc < script.rc
+
+Interactive flags
+- -n parse and plan only (no execution)
+- -p print execution plan
+- -x trace executed commands
+
+These flags work in both script and interactive modes.
+
+Documentation
+- DESIGN        architecture and execution model
+- CONFORMANCE   mapping to Plan 9 rc(1)
+- USAGE         practical examples
+- BETA          beta status and limitations
+- CHANGELOG     notable changes
+- LICENSE       license terms
+
+Status
+grc is stable enough for daily interactive use, but some rc features are still
+in progress.
+
+Do not run as root.
