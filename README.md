@@ -1,4 +1,4 @@
-# grc — a Go implementation of the Plan 9 rc shell
+# grc - a Go implementation of the Plan 9 rc shell
 
 `grc` is an interactive and scripting shell for Unix systems, implemented in Go,
 with semantics derived from the Plan 9 `rc` shell.
@@ -65,10 +65,10 @@ These flags work in both script and interactive modes.
 
 Documentation
 
-- DESIGN.md — architecture and execution model
-- CONFORMANCE.md — mapping to Plan 9 rc(1)
-- USAGE.md — practical examples
-- BETA.md — beta status and limitations
+- DESIGN.md - architecture and execution model
+- CONFORMANCE.md - mapping to Plan 9 rc(1)
+- USAGE.md - practical examples
+- BETA.md - beta status and limitations
 
 Status
 
