@@ -58,7 +58,7 @@ func planLine(p *ExecPlan) string {
 		parts = append(parts, "bg")
 	}
 	if len(p.Redirs) > 0 {
-		parts = append(parts, fmt.Sprintf("redirs=%d", len(p.Redirs)))
+		parts = append(parts, "redirs="+formatRedirs(p.Redirs))
 	}
 	return strings.Join(parts, " ")
 }
@@ -66,14 +66,26 @@ func planLine(p *ExecPlan) string {
 func planKindName(k PlanKind) string {
 	switch k {
 	case PlanCmd:
-		return "cmd"
+		return "CMD"
 	case PlanFnDef:
-		return "fn"
+		return "FNDEF"
 	case PlanNoop:
-		return "noop"
+		return "NOOP"
 	case PlanAssign:
-		return "assign"
+		return "ASSIGN"
 	default:
-		return "unknown"
+		return "UNKNOWN"
 	}
+}
+
+func formatRedirs(rs []RedirPlan) string {
+	var parts []string
+	for _, r := range rs {
+		if len(r.Target) == 0 {
+			parts = append(parts, r.Op+":")
+			continue
+		}
+		parts = append(parts, r.Op+":"+strings.Join(r.Target, ","))
+	}
+	return strings.Join(parts, ",")
 }

@@ -49,7 +49,7 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 		r.Builtins = defaultBuiltins()
 	}
 	if r.Trace && r.TraceWriter == nil {
-		r.TraceWriter = stderr
+		r.TraceWriter = io.Discard
 	}
 	status := r.runChain(p, stdin, stdout, stderr)
 	return Result{Status: status}
@@ -128,7 +128,6 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		if err != nil {
 			return 1
 		}
-		r.traceAssign(p.AssignName, vals)
 		r.Env.Set(p.AssignName, vals)
 		return 0
 	}
@@ -151,11 +150,10 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	if len(argv) == 0 {
 		return 0
 	}
+	r.tracef("+ %s\n", strings.Join(argv, " "))
 	if def, ok := execEnv.GetFunc(argv[0]); ok {
-		r.traceFunc(def.Name, p, argv, execEnv)
 		return r.runFuncCall(def, argv, p, execEnv, stdin, stdout, stderr)
 	}
-	r.traceCmd(p, argv, execEnv)
 	if builtin, ok := r.Builtins[argv[0]]; ok {
 		return r.runBuiltin(builtin, argv, p, execEnv, stdin, stdout, stderr)
 	}
@@ -258,50 +256,11 @@ func (r *Runner) expandArgv(p *ExecPlan, env *Env) ([]string, error) {
 	return ExpandCall(p.Call, env)
 }
 
-func (r *Runner) traceAssign(name string, vals []string) {
+func (r *Runner) tracef(format string, args ...any) {
 	if !r.Trace || r.TraceWriter == nil {
 		return
 	}
-	fmt.Fprintf(r.TraceWriter, "+ %s\n", formatAssign(name, vals))
-}
-
-func (r *Runner) traceCmd(p *ExecPlan, argv []string, execEnv *Env) {
-	if !r.Trace || r.TraceWriter == nil {
-		return
-	}
-	var parts []string
-	for _, pref := range p.Prefix {
-		vals, _ := ExpandValue(pref.Val, execEnv)
-		parts = append(parts, formatAssign(pref.Name, vals))
-	}
-	parts = append(parts, argv...)
-	fmt.Fprintf(r.TraceWriter, "+ %s\n", strings.Join(parts, " "))
-}
-
-func (r *Runner) traceFunc(name string, p *ExecPlan, argv []string, execEnv *Env) {
-	if !r.Trace || r.TraceWriter == nil {
-		return
-	}
-	var parts []string
-	for _, pref := range p.Prefix {
-		vals, _ := ExpandValue(pref.Val, execEnv)
-		parts = append(parts, formatAssign(pref.Name, vals))
-	}
-	parts = append(parts, "fn", name)
-	if len(argv) > 1 {
-		parts = append(parts, argv[1:]...)
-	}
-	fmt.Fprintf(r.TraceWriter, "+ %s\n", strings.Join(parts, " "))
-}
-
-func formatAssign(name string, vals []string) string {
-	if len(vals) == 0 {
-		return name + "=()"
-	}
-	if len(vals) == 1 {
-		return name + "=" + vals[0]
-	}
-	return name + "=(" + strings.Join(vals, " ") + ")"
+	fmt.Fprintf(r.TraceWriter, format, args...)
 }
 
 func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout *io.Writer) ([]*os.File, error) {

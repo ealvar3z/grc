@@ -1,0 +1,3 @@
+x=O2
+printf %s -$x
+printf ' %s' $x.c
