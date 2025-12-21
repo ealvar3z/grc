@@ -5,9 +5,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 
@@ -666,7 +668,12 @@ func (r *Runner) restoreForeground() {
 		return
 	}
 	if r.ShellPgid != 0 {
-		_ = r.setForegroundPgrp(r.ShellPgid)
+		_ = signal.Ignore(syscall.SIGTTOU)
+		err := r.setForegroundPgrp(r.ShellPgid)
+		signal.Reset(syscall.SIGTTOU)
+		if err != nil {
+			r.tracef("tcsetpgrp restore failed: %v\n", err)
+		}
 	}
 	r.mu.Lock()
 	r.ForegroundPgid = 0
@@ -677,7 +684,11 @@ func (r *Runner) attachForegroundPgid(pgid int) {
 	if !r.Interactive || r.TTYFD <= 0 {
 		return
 	}
-	if err := r.setForegroundPgrp(pgid); err != nil {
+	_ = signal.Ignore(syscall.SIGTTOU)
+	err := r.setForegroundPgrp(pgid)
+	signal.Reset(syscall.SIGTTOU)
+	if err != nil {
+		r.tracef("tcsetpgrp failed: %v\n", err)
 		return
 	}
 	r.mu.Lock()

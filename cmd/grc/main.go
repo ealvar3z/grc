@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/peterh/liner"
 	"golang.org/x/sys/unix"
@@ -76,12 +77,18 @@ func runInteractive(noexec, printplan, trace bool) {
 		Env:         env,
 		Trace:       trace,
 		TraceWriter: os.Stderr,
-		Interactive: true,
-		TTYFD:       int(os.Stdin.Fd()),
 	}
-	if runner.TTYFD > 0 {
-		runner.ShellPgid = unix.Getpgrp()
-		_ = unix.IoctlSetPointerInt(runner.TTYFD, unix.TIOCSPGRP, runner.ShellPgid)
+	ttyfd := int(os.Stdin.Fd())
+	runner.Interactive = true
+	runner.TTYFD = ttyfd
+	if ttyfd > 0 {
+		pid := os.Getpid()
+		_ = syscall.Setpgid(0, 0)
+		shellPgid, _ := syscall.Getpgid(pid)
+		runner.ShellPgid = shellPgid
+		_ = signal.Ignore(syscall.SIGTTOU)
+		_ = unix.IoctlSetPointerInt(ttyfd, unix.TIOCSPGRP, shellPgid)
+		signal.Reset(syscall.SIGTTOU)
 	}
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt)
