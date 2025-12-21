@@ -668,7 +668,7 @@ func (r *Runner) restoreForeground() {
 		return
 	}
 	if r.ShellPgid != 0 {
-		_ = signal.Ignore(syscall.SIGTTOU)
+		signal.Ignore(syscall.SIGTTOU)
 		err := r.setForegroundPgrp(r.ShellPgid)
 		signal.Reset(syscall.SIGTTOU)
 		if err != nil {
@@ -684,7 +684,7 @@ func (r *Runner) attachForegroundPgid(pgid int) {
 	if !r.Interactive || r.TTYFD <= 0 {
 		return
 	}
-	_ = signal.Ignore(syscall.SIGTTOU)
+	signal.Ignore(syscall.SIGTTOU)
 	err := r.setForegroundPgrp(pgid)
 	signal.Reset(syscall.SIGTTOU)
 	if err != nil {

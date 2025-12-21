@@ -86,7 +86,7 @@ func runInteractive(noexec, printplan, trace bool) {
 		_ = syscall.Setpgid(0, 0)
 		shellPgid, _ := syscall.Getpgid(pid)
 		runner.ShellPgid = shellPgid
-		_ = signal.Ignore(syscall.SIGTTOU)
+		signal.Ignore(syscall.SIGTTOU)
 		_ = unix.IoctlSetPointerInt(ttyfd, unix.TIOCSPGRP, shellPgid)
 		signal.Reset(syscall.SIGTTOU)
 	}
