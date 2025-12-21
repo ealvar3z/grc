@@ -679,31 +679,35 @@ grcdefault:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:48
 		{
-			grcVAL.node = N(Kind(IF), grcDollar[2].node, grcDollar[3].node)
+			grcVAL.node = N(KIf, grcDollar[2].node, grcDollar[3].node)
 		}
 	case 21:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:49
 		{
-			grcVAL.node = N(Kind(IF), grcDollar[2].node, grcDollar[3].node)
+			grcVAL.node = N(KIfNot, grcDollar[3].node, nil)
 		}
 	case 22:
 		grcDollar = grcS[grcpt-7 : grcpt+1]
 //line internal/parse/parser.y:51
 		{
-			grcVAL.node = N(Kind(FOR), L(KWords, grcDollar[3].node, grcDollar[5].node), grcDollar[7].node)
+			n := N(KFor, grcDollar[3].node, grcDollar[7].node)
+			if grcDollar[5].node != nil {
+				n.List = grcDollar[5].node.List
+			}
+			grcVAL.node = n
 		}
 	case 23:
 		grcDollar = grcS[grcpt-5 : grcpt+1]
 //line internal/parse/parser.y:53
 		{
-			grcVAL.node = N(Kind(FOR), grcDollar[3].node, grcDollar[5].node)
+			grcVAL.node = N(KFor, grcDollar[3].node, grcDollar[5].node)
 		}
 	case 24:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:55
 		{
-			grcVAL.node = N(Kind(WHILE), grcDollar[2].node, grcDollar[3].node)
+			grcVAL.node = N(KWhile, grcDollar[2].node, grcDollar[3].node)
 		}
 	case 25:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
@@ -721,7 +725,7 @@ grcdefault:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
 //line internal/parse/parser.y:59
 		{
-			grcVAL.node = N(Kind(TWIDDLE), grcDollar[2].node, grcDollar[3].node)
+			grcVAL.node = N(KTwiddle, grcDollar[2].node, grcDollar[3].node)
 		}
 	case 28:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
@@ -758,7 +762,7 @@ grcdefault:
 		grcDollar = grcS[grcpt-2 : grcpt+1]
 //line internal/parse/parser.y:65
 		{
-			grcVAL.node = N(Kind(BANG), grcDollar[2].node, nil)
+			grcVAL.node = N(KNot, grcDollar[2].node, nil)
 		}
 	case 34:
 		grcDollar = grcS[grcpt-2 : grcpt+1]

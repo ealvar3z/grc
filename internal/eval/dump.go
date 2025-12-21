@@ -54,6 +54,9 @@ func planLine(p *ExecPlan) string {
 	if p.Func != nil {
 		parts = append(parts, "func="+p.Func.Name)
 	}
+	if p.ForName != "" {
+		parts = append(parts, "var="+p.ForName)
+	}
 	if p.Background {
 		parts = append(parts, "bg")
 	}
@@ -73,6 +76,22 @@ func planKindName(k PlanKind) string {
 		return "NOOP"
 	case PlanAssign:
 		return "ASSIGN"
+	case PlanIf:
+		return "IF"
+	case PlanIfNot:
+		return "IFNOT"
+	case PlanFor:
+		return "FOR"
+	case PlanWhile:
+		return "WHILE"
+	case PlanSwitch:
+		return "SWITCH"
+	case PlanNot:
+		return "NOT"
+	case PlanSubshell:
+		return "SUBSHELL"
+	case PlanTwiddle:
+		return "MATCH"
 	default:
 		return "UNKNOWN"
 	}

@@ -23,6 +23,14 @@ func ExpandWord(n *parse.Node, env *Env) ([]string, error) {
 	return globWords(words)
 }
 
+// ExpandWordNoGlob expands a word without globbing.
+func ExpandWordNoGlob(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
+	return expandWordBase(n, env)
+}
+
 func expandWordBase(n *parse.Node, env *Env) ([]string, error) {
 	if n == nil {
 		return nil, nil
@@ -131,6 +139,29 @@ func expandArgs(n *parse.Node, env *Env) ([]string, error) {
 		return nil, err
 	}
 	return vals, nil
+}
+
+// ExpandWordsNoGlob expands a list without globbing.
+func ExpandWordsNoGlob(n *parse.Node, env *Env) ([]string, error) {
+	return expandArgsNoGlob(n, env)
+}
+
+func expandArgsNoGlob(n *parse.Node, env *Env) ([]string, error) {
+	if n == nil {
+		return nil, nil
+	}
+	if n.Kind == parse.KArgList || n.Kind == parse.KWords {
+		var out []string
+		for _, child := range n.List {
+			vals, err := expandArgsNoGlob(child, env)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, vals...)
+		}
+		return out, nil
+	}
+	return ExpandWordNoGlob(n, env)
 }
 
 func normalizeEmpty(vals []string, err error) ([]string, error) {

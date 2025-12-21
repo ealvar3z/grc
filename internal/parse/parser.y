@@ -45,24 +45,24 @@ redir:	REDIR word		{$$=$1; $$.Right = $2;}
 cmd:				{$$=nil;}
 |	brace epilog		{$$=N(KCall, $1, $2);}
 |	IF paren cmd
-				{$$=N(Kind(IF), $2, $3);}
-|	IF NOT cmd		{$$=N(Kind(IF), $2, $3);}
+				{$$=N(KIf, $2, $3);}
+|	IF NOT cmd		{$$=N(KIfNot, $3, nil);}
 |	FOR '(' word IN words ')' cmd
-				{$$=N(Kind(FOR), L(KWords, $3, $5), $7);}
+				{n:=N(KFor, $3, $7); if $5 != nil { n.List = $5.List; }; $$=n;}
 |	FOR '(' word ')' cmd
-				{$$=N(Kind(FOR), $3, $5);}
+				{$$=N(KFor, $3, $5);}
 |	WHILE paren cmd
-				{$$=N(Kind(WHILE), $2, $3);}
+				{$$=N(KWhile, $2, $3);}
 |	SWITCH word brace
 				{$$=N(KSwitch, $2, $3);}
 |	simple			{$$=buildCallFromSimple($1);}
-|	TWIDDLE word words	{$$=N(Kind(TWIDDLE), $2, $3);}
+|	TWIDDLE word words	{$$=N(KTwiddle, $2, $3);}
 |	cmd ANDAND cmd		{$$=N(KAnd, $1, $3);}
 |	cmd OROR cmd		{$$=N(KOr, $1, $3);}
 |	cmd '|' cmd		{$$=N(KPipe, $1, $3);}
 |	redir cmd  %prec BANG	{$$=$1; $$.Left = $2;}
 |	assign cmd %prec BANG	{$$=N(KAssign, $1, $2);}
-|	BANG cmd		{$$=N(Kind(BANG), $2, nil);}
+|	BANG cmd		{$$=N(KNot, $2, nil);}
 |	SUBSHELL cmd		{$$=N(KSubshell, $2, nil);}
 |	FN words brace		{$$=N(KFnDef, $2, $3);}
 |	FN words		{$$=N(KFn, $2, nil);}

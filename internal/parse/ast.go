@@ -27,6 +27,12 @@ const (
 	KCount
 	KBackquote
 	KConcat
+	KIf
+	KIfNot
+	KFor
+	KWhile
+	KNot
+	KTwiddle
 )
 
 // Pos tracks a source position.

@@ -10,23 +10,27 @@ import (
 	"sync"
 
 	"golang.org/x/sys/unix"
+
+	"grc/internal/parse"
 )
 
 // Runner executes execution plans.
 type Runner struct {
-	Env            *Env
-	Builtins       map[string]Builtin
-	Trace          bool
-	TraceWriter    io.Writer
-	Interactive    bool
-	TTYFD          int
-	ShellPgid      int
-	ForegroundPgid int
-	mu             sync.Mutex
-	Jobs           map[int]*Job
-	nextJobID      int
-	exitRequested  bool
-	exitCode       int
+	Env              *Env
+	Builtins         map[string]Builtin
+	Trace            bool
+	TraceWriter      io.Writer
+	Interactive      bool
+	TTYFD            int
+	ShellPgid        int
+	ForegroundPgid   int
+	mu               sync.Mutex
+	Jobs             map[int]*Job
+	nextJobID        int
+	exitRequested    bool
+	exitCode         int
+	lastIfCondStatus int
+	lastIfCondValid  bool
 }
 
 // ExitRequested reports whether an exit builtin has been invoked.
@@ -90,10 +94,16 @@ func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		if cur.Background {
 			status = r.startBackground(cur, stdin, stdout, stderr)
 			r.Env.SetStatus(status)
+			if cur.Kind != PlanIf {
+				r.lastIfCondValid = false
+			}
 			continue
 		}
 		status = r.runSingle(cur, stdin, stdout, stderr)
 		r.Env.SetStatus(status)
+		if cur.Kind != PlanIf {
+			r.lastIfCondValid = false
+		}
 		if r.exitRequested {
 			return r.exitCode
 		}
@@ -268,6 +278,43 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	if p == nil {
 		return 0
 	}
+	switch p.Kind {
+	case PlanIf:
+		condStatus := r.runAST(p.IfCond, stdin, stdout, stderr)
+		status := condStatus
+		if condStatus == 0 {
+			status = r.runAST(p.IfBody, stdin, stdout, stderr)
+		}
+		r.lastIfCondStatus = condStatus
+		r.lastIfCondValid = true
+		return status
+	case PlanIfNot:
+		if !r.lastIfCondValid {
+			return 1
+		}
+		r.lastIfCondValid = false
+		if r.lastIfCondStatus != 0 {
+			return r.runAST(p.IfBody, stdin, stdout, stderr)
+		}
+		return 0
+	case PlanFor:
+		return r.runFor(p, stdin, stdout, stderr)
+	case PlanWhile:
+		return r.runWhile(p, stdin, stdout, stderr)
+	case PlanSwitch:
+		return r.runSwitch(p, stdin, stdout, stderr)
+	case PlanNot:
+		status := r.runAST(p.NotBody, stdin, stdout, stderr)
+		if status == 0 {
+			return 1
+		}
+		return 0
+	case PlanSubshell:
+		child := NewChild(r.Env)
+		return r.runASTWithEnv(child, p.SubBody, stdin, stdout, stderr)
+	case PlanTwiddle:
+		return r.runMatch(p)
+	}
 	if p.Kind == PlanFnDef {
 		if p.Func != nil && p.Func.Name != "" {
 			r.Env.SetFunc(p.Func.Name, p.Func.Body)
@@ -394,6 +441,127 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 	status := r.runChain(bodyPlan, in, out, stderr)
 	r.Env = origEnv
 	return status
+}
+
+func (r *Runner) runAST(n *parse.Node, stdin io.Reader, stdout, stderr io.Writer) int {
+	if n == nil {
+		return 0
+	}
+	plan, err := BuildPlan(n, r.Env)
+	if err != nil {
+		return 1
+	}
+	return r.runChain(plan, stdin, stdout, stderr)
+}
+
+func (r *Runner) runASTWithEnv(env *Env, n *parse.Node, stdin io.Reader, stdout, stderr io.Writer) int {
+	if n == nil {
+		return 0
+	}
+	plan, err := BuildPlan(n, env)
+	if err != nil {
+		return 1
+	}
+	orig := r.Env
+	r.Env = env
+	status := r.runChain(plan, stdin, stdout, stderr)
+	r.Env = orig
+	return status
+}
+
+func (r *Runner) runFor(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	if p.ForName == "" {
+		return 1
+	}
+	var list []string
+	if p.ForList != nil {
+		vals, err := ExpandValue(p.ForList, r.Env)
+		if err != nil {
+			return 1
+		}
+		list = vals
+	} else {
+		list = r.Env.Get("*")
+	}
+	if len(list) == 0 {
+		return 0
+	}
+	status := 0
+	for _, val := range list {
+		r.Env.Set(p.ForName, []string{val})
+		status = r.runAST(p.ForBody, stdin, stdout, stderr)
+		r.Env.SetStatus(status)
+		if r.exitRequested {
+			break
+		}
+	}
+	return status
+}
+
+func (r *Runner) runWhile(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	status := 0
+	for {
+		cond := r.runAST(p.WhileCond, stdin, stdout, stderr)
+		if cond != 0 {
+			return status
+		}
+		status = r.runAST(p.WhileBody, stdin, stdout, stderr)
+		r.Env.SetStatus(status)
+		if r.exitRequested {
+			return status
+		}
+	}
+}
+
+func (r *Runner) runSwitch(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	arg := ""
+	if p.SwitchArg != nil {
+		vals, err := ExpandWordNoGlob(p.SwitchArg, r.Env)
+		if err != nil {
+			return 1
+		}
+		if len(vals) > 0 {
+			arg = vals[0]
+		}
+	}
+	cases, err := switchCases(p.SwitchBody, r.Env)
+	if err != nil {
+		return 1
+	}
+	if len(cases) == 0 {
+		return 0
+	}
+	for _, c := range cases {
+		if matchAnyPattern(arg, c.Patterns) {
+			return r.runAST(c.Body, stdin, stdout, stderr)
+		}
+	}
+	return 0
+}
+
+func (r *Runner) runMatch(p *ExecPlan) int {
+	subjects, err := ExpandWordNoGlob(p.MatchSubj, r.Env)
+	if err != nil {
+		return 1
+	}
+	if len(subjects) == 0 {
+		return 1
+	}
+	patterns, err := ExpandWordsNoGlob(p.MatchPats, r.Env)
+	if err != nil {
+		return 1
+	}
+	if len(patterns) == 0 {
+		return 1
+	}
+	for _, subj := range subjects {
+		for _, pat := range patterns {
+			if rcMatch(pat, subj) {
+				return 0
+			}
+		}
+	}
+	return 1
 }
 
 func buildCmd(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
