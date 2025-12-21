@@ -85,6 +85,19 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 	return Result{Status: status}
 }
 
+// CallFunc invokes a defined rc function by name.
+func (r *Runner) CallFunc(name string, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if r == nil || r.Env == nil {
+		return 1
+	}
+	def, ok := r.Env.GetFunc(name)
+	if !ok {
+		return 1
+	}
+	argv := append([]string{name}, args...)
+	return r.runFuncCall(def, argv, &ExecPlan{}, r.Env, stdin, stdout, stderr, false)
+}
+
 func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	status := 0
 	for cur := p; cur != nil; cur = cur.Next {
@@ -210,7 +223,10 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	r.tracef("+ %s\n", strings.Join(leftPrep.argv, " "))
 	r.tracef("+ %s\n", strings.Join(rightPrep.argv, " "))
 
-	pr, pw := io.Pipe()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return 1, true
+	}
 	leftCmd, leftCleanup, err := buildCmd(leftPrep.argv, left, stdin, pw, stderr)
 	if err != nil {
 		_ = pw.Close()
@@ -243,6 +259,8 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 		_ = pr.Close()
 		return exitStatus(err), true
 	}
+	_ = pw.Close()
+	_ = pr.Close()
 
 	if background {
 		job := r.onBackgroundStart(leader, []int{leftCmd.Process.Pid, rightCmd.Process.Pid}, strings.Join(leftPrep.argv, " ")+" | "+strings.Join(rightPrep.argv, " "))
@@ -254,12 +272,10 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	rightDone := make(chan int, 1)
 	go func() {
 		err := leftCmd.Wait()
-		_ = pw.Close()
 		leftDone <- exitStatus(err)
 	}()
 	go func() {
 		err := rightCmd.Wait()
-		_ = pr.Close()
 		rightDone <- exitStatus(err)
 	}()
 	_ = <-leftDone
@@ -351,7 +367,8 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
 	in := stdin
 	out := stdout
-	files, err := applyRedirs(p, &in, &out)
+	errOut := stderr
+	files, err := applyRedirs(p, &in, &out, &errOut)
 	if err != nil {
 		return 1
 	}
@@ -360,7 +377,7 @@ func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *En
 	}
 	orig := r.Env
 	r.Env = env
-	status := builtin(in, out, stderr, argv, r)
+	status := builtin(in, out, errOut, argv, r)
 	r.Env = orig
 	return status
 }
@@ -400,7 +417,8 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	in := stdin
 	out := stdout
-	files, err := applyRedirs(p, &in, &out)
+	errOut := stderr
+	files, err := applyRedirs(p, &in, &out, &errOut)
 	if err != nil {
 		return 1
 	}
@@ -428,7 +446,7 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 		r.Env = origEnv
 		return 0
 	}
-	status := r.runChain(bodyPlan, in, out, stderr)
+	status := r.runChain(bodyPlan, in, out, errOut)
 	r.Env = origEnv
 	return status
 }
@@ -569,7 +587,7 @@ func buildCmd(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Wri
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	files, err := applyRedirs(p, &cmd.Stdin, &cmd.Stdout)
+	files, err := applyRedirs(p, &cmd.Stdin, &cmd.Stdout, &cmd.Stderr)
 	cleanup := func() {
 		for _, f := range files {
 			_ = f.Close()
@@ -698,48 +716,177 @@ func (r *Runner) tracef(format string, args ...any) {
 	fmt.Fprintf(r.TraceWriter, format, args...)
 }
 
-func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout *io.Writer) ([]*os.File, error) {
+func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*os.File, error) {
 	if p == nil {
 		return nil, nil
 	}
 	var files []*os.File
 	for _, r := range p.Redirs {
+		if r.Op == "dup" {
+			if err := applyDup(r, stdin, stdout, stderr, &files); err != nil {
+				return files, err
+			}
+			continue
+		}
 		if len(r.Target) == 0 {
 			continue
 		}
 		path := r.Target[0]
+		fd := r.Fd
+		if fd < 0 {
+			fd = defaultRedirFD(r.Op)
+		}
 		switch r.Op {
 		case ">":
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
 			if err != nil {
 				return files, err
 			}
-			*stdout = f
+			if err := assignFD(fd, stdin, stdout, stderr, f); err != nil {
+				_ = f.Close()
+				return files, err
+			}
 			files = append(files, f)
 		case ">>":
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o666)
 			if err != nil {
 				return files, err
 			}
-			*stdout = f
+			if err := assignFD(fd, stdin, stdout, stderr, f); err != nil {
+				_ = f.Close()
+				return files, err
+			}
 			files = append(files, f)
 		case "<":
 			f, err := os.Open(path)
 			if err != nil {
 				return files, err
 			}
-			*stdin = f
+			if err := assignFD(fd, stdin, stdout, stderr, f); err != nil {
+				_ = f.Close()
+				return files, err
+			}
 			files = append(files, f)
 		case "<>":
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o666)
 			if err != nil {
 				return files, err
 			}
-			*stdin = f
+			if err := assignFD(fd, stdin, stdout, stderr, f); err != nil {
+				_ = f.Close()
+				return files, err
+			}
 			files = append(files, f)
+		case "<<", "<<<":
+			return files, fmt.Errorf("heredoc not implemented")
+		default:
+			return files, fmt.Errorf("unsupported redirection: %s", r.Op)
 		}
 	}
 	return files, nil
+}
+
+func defaultRedirFD(op string) int {
+	if strings.HasPrefix(op, "<") {
+		return 0
+	}
+	return 1
+}
+
+func assignFD(fd int, stdin *io.Reader, stdout, stderr *io.Writer, f *os.File) error {
+	switch fd {
+	case 0:
+		*stdin = f
+	case 1:
+		*stdout = f
+	case 2:
+		*stderr = f
+	default:
+		return fmt.Errorf("unsupported fd %d", fd)
+	}
+	return nil
+}
+
+func applyDup(r RedirPlan, stdin *io.Reader, stdout, stderr *io.Writer, files *[]*os.File) error {
+	if r.Fd < 0 {
+		return fmt.Errorf("dup missing target fd")
+	}
+	if r.Close {
+		return closeFD(r.Fd, stdin, stdout, stderr, files)
+	}
+	if r.Fd == r.DupTo {
+		return nil
+	}
+	srcWriter, srcWriterOK := writerForFD(r.DupTo, stdin, stdout, stderr)
+	srcReader, srcReaderOK := readerForFD(r.DupTo, stdin, stdout, stderr)
+	switch r.Fd {
+	case 0:
+		if !srcReaderOK {
+			return fmt.Errorf("dup source fd %d is not readable", r.DupTo)
+		}
+		*stdin = srcReader
+	case 1:
+		if !srcWriterOK {
+			return fmt.Errorf("dup source fd %d is not writable", r.DupTo)
+		}
+		*stdout = srcWriter
+	case 2:
+		if !srcWriterOK {
+			return fmt.Errorf("dup source fd %d is not writable", r.DupTo)
+		}
+		*stderr = srcWriter
+	default:
+		return fmt.Errorf("unsupported fd %d", r.Fd)
+	}
+	return nil
+}
+
+func closeFD(fd int, stdin *io.Reader, stdout, stderr *io.Writer, files *[]*os.File) error {
+	var f *os.File
+	var err error
+	switch fd {
+	case 0:
+		f, err = os.Open(os.DevNull)
+	case 1, 2:
+		f, err = os.OpenFile(os.DevNull, os.O_WRONLY, 0o666)
+	default:
+		return fmt.Errorf("unsupported fd %d", fd)
+	}
+	if err != nil {
+		return err
+	}
+	*files = append(*files, f)
+	return assignFD(fd, stdin, stdout, stderr, f)
+}
+
+func writerForFD(fd int, stdin *io.Reader, stdout, stderr *io.Writer) (io.Writer, bool) {
+	switch fd {
+	case 1:
+		return *stdout, true
+	case 2:
+		return *stderr, true
+	case 0:
+		if w, ok := (*stdin).(io.Writer); ok {
+			return w, true
+		}
+	}
+	return nil, false
+}
+
+func readerForFD(fd int, stdin *io.Reader, stdout, stderr *io.Writer) (io.Reader, bool) {
+	switch fd {
+	case 0:
+		return *stdin, true
+	case 1:
+		if r, ok := (*stdout).(io.Reader); ok {
+			return r, true
+		}
+	case 2:
+		if r, ok := (*stderr).(io.Reader); ok {
+			return r, true
+		}
+	}
+	return nil, false
 }
 
 func exitStatus(err error) int {

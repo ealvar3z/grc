@@ -100,11 +100,23 @@ func planKindName(k PlanKind) string {
 func formatRedirs(rs []RedirPlan) string {
 	var parts []string
 	for _, r := range rs {
-		if len(r.Target) == 0 {
-			parts = append(parts, r.Op+":")
+		if r.Op == "dup" {
+			if r.Close {
+				parts = append(parts, fmt.Sprintf("dup:%d=", r.Fd))
+			} else {
+				parts = append(parts, fmt.Sprintf("dup:%d=%d", r.Fd, r.DupTo))
+			}
 			continue
 		}
-		parts = append(parts, r.Op+":"+strings.Join(r.Target, ","))
+		fd := ""
+		if r.Fd >= 0 {
+			fd = fmt.Sprintf("%d", r.Fd)
+		}
+		if len(r.Target) == 0 {
+			parts = append(parts, fd+r.Op+":")
+			continue
+		}
+		parts = append(parts, fd+r.Op+":"+strings.Join(r.Target, ","))
 	}
 	return strings.Join(parts, ",")
 }

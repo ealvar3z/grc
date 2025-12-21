@@ -503,7 +503,7 @@ func (lx *Lexer) readRedir(op rune, line, col int) (*Node, int) {
 			rtype = "<"
 		}
 	}
-	node := &Node{Kind: KRedir, Tok: rtype, Pos: Pos{Line: line, Col: col}}
+	node := &Node{Kind: KRedir, Tok: rtype, I1: fdUnset, Pos: Pos{Line: line, Col: col}}
 	if rtype == "<<" || rtype == "<<<" {
 		tok = SREDIR
 	}

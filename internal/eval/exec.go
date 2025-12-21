@@ -10,6 +10,9 @@ import (
 type RedirPlan struct {
 	Op     string
 	Target []string
+	Fd     int
+	DupTo  int
+	Close  bool
 }
 
 // ExecPlan is a dry-run execution plan.
@@ -194,7 +197,7 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		if plan == nil {
 			plan = &ExecPlan{}
 		}
-		plan.Redirs = append(plan.Redirs, RedirPlan{Op: ast.Tok, Target: target})
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: ast.Tok, Target: target, Fd: ast.I1})
 		return plan, nil
 	case parse.KCall:
 		argv, err := ExpandCall(ast, env)
@@ -315,7 +318,7 @@ func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 			if err != nil {
 				return err
 			}
-			plan.Redirs = append(plan.Redirs, RedirPlan{Op: child.Tok, Target: target})
+			plan.Redirs = append(plan.Redirs, RedirPlan{Op: child.Tok, Target: target, Fd: child.I1})
 		}
 		return nil
 	}
@@ -324,11 +327,11 @@ func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 		if err != nil {
 			return err
 		}
-		plan.Redirs = append(plan.Redirs, RedirPlan{Op: n.Tok, Target: target})
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: n.Tok, Target: target, Fd: n.I1})
 		return nil
 	}
 	if n.Kind == parse.KDup {
-		plan.Redirs = append(plan.Redirs, RedirPlan{Op: "dup", Target: []string{fmt.Sprintf("%d=%d", n.I1, n.I2)}})
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: "dup", Fd: n.I1, DupTo: n.I2, Close: n.I2 < 0})
 		return nil
 	}
 	return nil
