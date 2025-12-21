@@ -79,6 +79,10 @@ func runInteractive(noexec, printplan, trace bool) {
 		Interactive: true,
 		TTYFD:       int(os.Stdin.Fd()),
 	}
+	if runner.TTYFD > 0 {
+		runner.ShellPgid = unix.Getpgrp()
+		_ = unix.IoctlSetPointerInt(runner.TTYFD, unix.TIOCSPGRP, runner.ShellPgid)
+	}
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt)
 	defer signal.Stop(sigc)

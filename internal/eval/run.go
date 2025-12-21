@@ -14,19 +14,19 @@ import (
 
 // Runner executes execution plans.
 type Runner struct {
-	Env           *Env
-	Builtins      map[string]Builtin
-	Trace         bool
-	TraceWriter   io.Writer
-	Interactive   bool
-	TTYFD         int
-	ShellPgid     int
+	Env            *Env
+	Builtins       map[string]Builtin
+	Trace          bool
+	TraceWriter    io.Writer
+	Interactive    bool
+	TTYFD          int
+	ShellPgid      int
 	ForegroundPgid int
-	mu            sync.Mutex
-	Jobs          map[int]*Job
-	nextJobID     int
-	exitRequested bool
-	exitCode      int
+	mu             sync.Mutex
+	Jobs           map[int]*Job
+	nextJobID      int
+	exitRequested  bool
+	exitCode       int
 }
 
 // ExitRequested reports whether an exit builtin has been invoked.
@@ -114,28 +114,146 @@ func (r *Runner) runSingle(p *ExecPlan, stdin io.Reader, stdout, stderr io.Write
 		return 0
 	}
 	if p.PipeTo != nil {
-		return r.runPipe(p, p.PipeTo, stdin, stdout, stderr)
+		return r.runPipe(p, p.PipeTo, stdin, stdout, stderr, false)
 	}
 	return r.runStage(p, stdin, stdout, stderr, false)
 }
 
-func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
+	if background {
+		return r.runPipeFallback(left, right, stdin, stdout, stderr, true)
+	}
+	if status, ok := r.runPipeExternal(left, right, stdin, stdout, stderr); ok {
+		return status
+	}
+	return r.runPipeFallback(left, right, stdin, stdout, stderr, false)
+}
+
+func (r *Runner) runPipeFallback(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	pr, pw := io.Pipe()
 	leftDone := make(chan int, 1)
 	rightDone := make(chan int, 1)
 
 	go func() {
-		leftDone <- r.runStage(left, stdin, pw, stderr, false)
+		leftDone <- r.runStage(left, stdin, pw, stderr, background)
 		_ = pw.Close()
 	}()
 	go func() {
-		rightDone <- r.runStage(right, pr, stdout, stderr, false)
+		rightDone <- r.runStage(right, pr, stdout, stderr, background)
 		_ = pr.Close()
 	}()
 
 	_ = <-leftDone
 	status := <-rightDone
 	return status
+}
+
+type stagePrep struct {
+	argv []string
+	env  *Env
+}
+
+func (r *Runner) prepareExternal(p *ExecPlan) (stagePrep, bool, error) {
+	if p == nil || p.Kind == PlanFnDef || p.Kind == PlanAssign {
+		return stagePrep{}, false, nil
+	}
+	execEnv := r.Env
+	if len(p.Prefix) > 0 {
+		child := NewChild(r.Env)
+		for _, pref := range p.Prefix {
+			vals, err := ExpandValue(pref.Val, child)
+			if err != nil {
+				return stagePrep{}, false, err
+			}
+			child.Set(pref.Name, vals)
+		}
+		execEnv = child
+	}
+	argv, err := r.expandArgv(p, execEnv)
+	if err != nil {
+		return stagePrep{}, false, err
+	}
+	if len(argv) == 0 {
+		return stagePrep{}, false, nil
+	}
+	if _, ok := execEnv.GetFunc(argv[0]); ok {
+		return stagePrep{}, false, nil
+	}
+	if _, ok := r.Builtins[argv[0]]; ok {
+		return stagePrep{}, false, nil
+	}
+	return stagePrep{argv: argv, env: execEnv}, true, nil
+}
+
+func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
+	leftPrep, ok, err := r.prepareExternal(left)
+	if err != nil {
+		return 1, true
+	}
+	if !ok {
+		return 0, false
+	}
+	rightPrep, ok, err := r.prepareExternal(right)
+	if err != nil {
+		return 1, true
+	}
+	if !ok {
+		return 0, false
+	}
+	r.tracef("+ %s\n", strings.Join(leftPrep.argv, " "))
+	r.tracef("+ %s\n", strings.Join(rightPrep.argv, " "))
+
+	pr, pw := io.Pipe()
+	leftCmd, leftCleanup, err := buildCmd(leftPrep.argv, left, stdin, pw, stderr)
+	if err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		return 1, true
+	}
+	rightCmd, rightCleanup, err := buildCmd(rightPrep.argv, right, pr, stdout, stderr)
+	if err != nil {
+		leftCleanup()
+		_ = pw.Close()
+		_ = pr.Close()
+		return 1, true
+	}
+	defer leftCleanup()
+	defer rightCleanup()
+
+	leftCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	if err := leftCmd.Start(); err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		return exitStatus(err), true
+	}
+	leader := leftCmd.Process.Pid
+
+	rightCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true, Pgid: leader}
+	if err := rightCmd.Start(); err != nil {
+		_ = leftCmd.Process.Kill()
+		_ = leftCmd.Wait()
+		_ = pw.Close()
+		_ = pr.Close()
+		return exitStatus(err), true
+	}
+
+	r.attachForeground(leader)
+	leftDone := make(chan int, 1)
+	rightDone := make(chan int, 1)
+	go func() {
+		err := leftCmd.Wait()
+		_ = pw.Close()
+		leftDone <- exitStatus(err)
+	}()
+	go func() {
+		err := rightCmd.Wait()
+		_ = pr.Close()
+		rightDone <- exitStatus(err)
+	}()
+	_ = <-leftDone
+	status := <-rightDone
+	r.restoreForeground()
+	return status, true
 }
 
 func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
@@ -182,7 +300,7 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	if builtin, ok := r.Builtins[argv[0]]; ok {
 		return r.runBuiltin(builtin, argv, p, execEnv, stdin, stdout, stderr)
 	}
-	return r.runExternal(argv, p, stdin, stdout, stderr, background)
+	return r.runExternal(argv, p, stdin, stdout, stderr, background, 0)
 }
 
 func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -202,7 +320,7 @@ func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *En
 	return status
 }
 
-func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
+func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool, wantPgid int) int {
 	cmd, cleanup, err := buildCmd(argv, p, stdin, stdout, stderr)
 	if err != nil {
 		return 127
@@ -211,7 +329,11 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 		return 0
 	}
 	defer cleanup()
-	cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	if wantPgid != 0 {
+		cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true, Pgid: wantPgid}
+	} else {
+		cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	}
 	if err := cmd.Start(); err != nil {
 		return exitStatus(err)
 	}
@@ -299,7 +421,7 @@ func (r *Runner) startBackground(p *ExecPlan, stdin io.Reader, stdout, stderr io
 		return 0
 	}
 	if p.PipeTo != nil {
-		go r.runSingle(p, stdin, stdout, stderr)
+		go r.runPipe(p, p.PipeTo, stdin, stdout, stderr, true)
 		return 0
 	}
 	return r.runStage(p, stdin, stdout, stderr, true)
@@ -330,10 +452,12 @@ func (r *Runner) attachForeground(pid int) {
 	if err != nil {
 		return
 	}
+	if err := r.setForegroundPgrp(pgid); err != nil {
+		return
+	}
 	r.mu.Lock()
 	r.ForegroundPgid = pgid
 	r.mu.Unlock()
-	_ = unix.IoctlSetInt(r.TTYFD, unix.TIOCSPGRP, pgid)
 }
 
 func (r *Runner) restoreForeground() {
@@ -344,11 +468,18 @@ func (r *Runner) restoreForeground() {
 		return
 	}
 	if r.ShellPgid != 0 {
-		_ = unix.IoctlSetInt(r.TTYFD, unix.TIOCSPGRP, r.ShellPgid)
+		_ = r.setForegroundPgrp(r.ShellPgid)
 	}
 	r.mu.Lock()
 	r.ForegroundPgid = 0
 	r.mu.Unlock()
+}
+
+func (r *Runner) setForegroundPgrp(pgid int) error {
+	if r.TTYFD <= 0 {
+		return fmt.Errorf("invalid tty fd")
+	}
+	return unix.IoctlSetPointerInt(r.TTYFD, unix.TIOCSPGRP, pgid)
 }
 
 func (r *Runner) tracef(format string, args ...any) {
