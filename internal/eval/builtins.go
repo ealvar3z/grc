@@ -12,6 +12,7 @@ type Builtin func(stdin io.Reader, stdout, stderr io.Writer, args []string, r *R
 func defaultBuiltins() map[string]Builtin {
 	return map[string]Builtin{
 		"cd":   builtinCD,
+		"jobs": builtinJobs,
 		"pwd":  builtinPWD,
 		"exit": builtinExit,
 	}
@@ -73,6 +74,21 @@ func builtinExit(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Ru
 		r.exitCode = code
 	}
 	return code
+}
+
+func builtinJobs(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stderr
+	_ = args
+	if r == nil {
+		return 0
+	}
+	jobs := r.listJobs()
+	if len(jobs) == 0 {
+		return 0
+	}
+	_, _ = fmt.Fprint(stdout, formatJobs(jobs))
+	return 0
 }
 
 func parseInt(s string) (int, error) {

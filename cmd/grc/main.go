@@ -66,8 +66,8 @@ func runInteractive(noexec, printplan, trace bool) {
 	historyPath := historyFile()
 	if historyPath != "" {
 		if f, err := os.Open(historyPath); err == nil {
+			defer f.Close()
 			_, _ = line.ReadHistory(f)
-			_ = f.Close()
 		}
 	}
 
@@ -87,6 +87,8 @@ func runInteractive(noexec, printplan, trace bool) {
 			pgid := runner.Foreground()
 			if pgid != 0 {
 				_ = unix.Kill(-pgid, unix.SIGINT)
+			} else {
+				fmt.Fprintln(os.Stderr)
 			}
 		}
 	}()
@@ -97,6 +99,7 @@ func runInteractive(noexec, printplan, trace bool) {
 		}
 		input, err := line.Prompt(prompt)
 		if err == liner.ErrPromptAborted {
+			fmt.Fprintln(os.Stderr)
 			continue
 		}
 		if err == io.EOF {
@@ -127,19 +130,17 @@ func runInteractive(noexec, printplan, trace bool) {
 		if noexec {
 			continue
 		}
-		result := runner.RunPlan(plan, strings.NewReader(""), os.Stdout, os.Stderr)
+		result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
 		if runner.ExitRequested() {
 			os.Exit(runner.ExitCode())
 		}
-		if result.Status != 0 {
-			fmt.Fprintln(os.Stderr, result.Status)
-		}
+		_ = result
 	}
 
 	if historyPath != "" {
 		if f, err := os.Create(historyPath); err == nil {
+			defer f.Close()
 			_, _ = line.WriteHistory(f)
-			_ = f.Close()
 		}
 	}
 }

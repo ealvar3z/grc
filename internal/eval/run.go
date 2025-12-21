@@ -23,6 +23,8 @@ type Runner struct {
 	ShellPgid     int
 	ForegroundPgid int
 	mu            sync.Mutex
+	Jobs          map[int]*Job
+	nextJobID     int
 	exitRequested bool
 	exitCode      int
 }
@@ -66,6 +68,9 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 	if r.Builtins == nil {
 		r.Builtins = defaultBuiltins()
 	}
+	if r.Jobs == nil {
+		r.Jobs = make(map[int]*Job)
+	}
 	if r.Trace && r.TraceWriter == nil {
 		r.TraceWriter = io.Discard
 	}
@@ -83,8 +88,7 @@ func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 			return r.exitCode
 		}
 		if cur.Background {
-			go r.runSingle(cur, stdin, stdout, stderr)
-			status = 0
+			status = r.startBackground(cur, stdin, stdout, stderr)
 			r.Env.SetStatus(status)
 			continue
 		}
@@ -112,7 +116,7 @@ func (r *Runner) runSingle(p *ExecPlan, stdin io.Reader, stdout, stderr io.Write
 	if p.PipeTo != nil {
 		return r.runPipe(p, p.PipeTo, stdin, stdout, stderr)
 	}
-	return r.runStage(p, stdin, stdout, stderr)
+	return r.runStage(p, stdin, stdout, stderr, false)
 }
 
 func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -121,11 +125,11 @@ func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr 
 	rightDone := make(chan int, 1)
 
 	go func() {
-		leftDone <- r.runStage(left, stdin, pw, stderr)
+		leftDone <- r.runStage(left, stdin, pw, stderr, false)
 		_ = pw.Close()
 	}()
 	go func() {
-		rightDone <- r.runStage(right, pr, stdout, stderr)
+		rightDone <- r.runStage(right, pr, stdout, stderr, false)
 		_ = pr.Close()
 	}()
 
@@ -134,7 +138,7 @@ func (r *Runner) runPipe(left, right *ExecPlan, stdin io.Reader, stdout, stderr 
 	return status
 }
 
-func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	if p == nil {
 		return 0
 	}
@@ -173,12 +177,12 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 	}
 	r.tracef("+ %s\n", strings.Join(argv, " "))
 	if def, ok := execEnv.GetFunc(argv[0]); ok {
-		return r.runFuncCall(def, argv, p, execEnv, stdin, stdout, stderr)
+		return r.runFuncCall(def, argv, p, execEnv, stdin, stdout, stderr, background)
 	}
 	if builtin, ok := r.Builtins[argv[0]]; ok {
 		return r.runBuiltin(builtin, argv, p, execEnv, stdin, stdout, stderr)
 	}
-	return r.runExternal(argv, p, stdin, stdout, stderr)
+	return r.runExternal(argv, p, stdin, stdout, stderr, background)
 }
 
 func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -198,7 +202,7 @@ func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *En
 	return status
 }
 
-func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	cmd, cleanup, err := buildCmd(argv, p, stdin, stdout, stderr)
 	if err != nil {
 		return 127
@@ -211,13 +215,18 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 	if err := cmd.Start(); err != nil {
 		return exitStatus(err)
 	}
+	if background {
+		r.onBackgroundStart(cmd, argv)
+		go r.waitBackground(cmd, argv)
+		return 0
+	}
 	r.attachForeground(cmd.Process.Pid)
 	err = cmd.Wait()
 	r.restoreForeground()
 	return exitStatus(err)
 }
 
-func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer) int {
+func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, stdin io.Reader, stdout, stderr io.Writer, background bool) int {
 	in := stdin
 	out := stdout
 	files, err := applyRedirs(p, &in, &out)
@@ -243,6 +252,11 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 	}
 	origEnv := r.Env
 	r.Env = child
+	if background {
+		go r.runChain(bodyPlan, in, out, stderr)
+		r.Env = origEnv
+		return 0
+	}
 	status := r.runChain(bodyPlan, in, out, stderr)
 	r.Env = origEnv
 	return status
@@ -278,6 +292,34 @@ func (r *Runner) expandArgv(p *ExecPlan, env *Env) ([]string, error) {
 		return p.Argv, nil
 	}
 	return ExpandCall(p.Call, env)
+}
+
+func (r *Runner) startBackground(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
+	if p == nil {
+		return 0
+	}
+	if p.PipeTo != nil {
+		go r.runSingle(p, stdin, stdout, stderr)
+		return 0
+	}
+	return r.runStage(p, stdin, stdout, stderr, true)
+}
+
+func (r *Runner) onBackgroundStart(cmd *exec.Cmd, argv []string) {
+	pgid, err := unix.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		pgid = cmd.Process.Pid
+	}
+	r.addAPID(cmd.Process.Pid)
+	r.addJob(pgid, cmd.Process.Pid, strings.Join(argv, " "))
+}
+
+func (r *Runner) waitBackground(cmd *exec.Cmd, argv []string) {
+	err := cmd.Wait()
+	exit := exitStatus(err)
+	pgid, _ := unix.Getpgid(cmd.Process.Pid)
+	r.markJobDone(pgid, exit)
+	r.removeAPID(cmd.Process.Pid)
 }
 
 func (r *Runner) attachForeground(pid int) {
