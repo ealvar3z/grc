@@ -669,8 +669,8 @@ func (r *Runner) restoreForeground() {
 	}
 	if r.ShellPgid != 0 {
 		signal.Ignore(syscall.SIGTTOU)
+		defer signal.Reset(syscall.SIGTTOU)
 		err := r.setForegroundPgrp(r.ShellPgid)
-		signal.Reset(syscall.SIGTTOU)
 		if err != nil {
 			r.tracef("tcsetpgrp restore failed: %v\n", err)
 		}
@@ -685,8 +685,8 @@ func (r *Runner) attachForegroundPgid(pgid int) {
 		return
 	}
 	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
 	err := r.setForegroundPgrp(pgid)
-	signal.Reset(syscall.SIGTTOU)
 	if err != nil {
 		r.tracef("tcsetpgrp failed: %v\n", err)
 		return
