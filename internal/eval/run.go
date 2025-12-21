@@ -88,22 +88,19 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) int {
 	status := 0
 	for cur := p; cur != nil; cur = cur.Next {
+		if r.lastIfCondValid && cur.Kind != PlanIfNot {
+			r.lastIfCondValid = false
+		}
 		if r.exitRequested {
 			return r.exitCode
 		}
 		if cur.Background {
 			status = r.startBackground(cur, stdin, stdout, stderr)
 			r.Env.SetStatus(status)
-			if cur.Kind != PlanIf {
-				r.lastIfCondValid = false
-			}
 			continue
 		}
 		status = r.runSingle(cur, stdin, stdout, stderr)
 		r.Env.SetStatus(status)
-		if cur.Kind != PlanIf {
-			r.lastIfCondValid = false
-		}
 		if r.exitRequested {
 			return r.exitCode
 		}
@@ -290,6 +287,9 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		return status
 	case PlanIfNot:
 		if !r.lastIfCondValid {
+			if stderr != nil {
+				fmt.Fprintln(stderr, "if not without preceding if")
+			}
 			return 1
 		}
 		r.lastIfCondValid = false
@@ -531,12 +531,18 @@ func (r *Runner) runSwitch(p *ExecPlan, stdin io.Reader, stdout, stderr io.Write
 	if len(cases) == 0 {
 		return 0
 	}
+	status := 0
+	matched := false
 	for _, c := range cases {
-		if matchAnyPattern(arg, c.Patterns) {
-			return r.runAST(c.Body, stdin, stdout, stderr)
+		if !matched && matchAnyPattern(arg, c.Patterns) {
+			matched = true
+		}
+		if matched {
+			status = r.runAST(c.Body, stdin, stdout, stderr)
+			r.Env.SetStatus(status)
 		}
 	}
-	return 0
+	return status
 }
 
 func (r *Runner) runMatch(p *ExecPlan) int {
