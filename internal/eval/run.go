@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+
+	"golang.org/x/sys/unix"
 )
 
 // Runner executes execution plans.
@@ -15,6 +18,11 @@ type Runner struct {
 	Builtins      map[string]Builtin
 	Trace         bool
 	TraceWriter   io.Writer
+	Interactive   bool
+	TTYFD         int
+	ShellPgid     int
+	ForegroundPgid int
+	mu            sync.Mutex
 	exitRequested bool
 	exitCode      int
 }
@@ -35,6 +43,16 @@ func (r *Runner) ExitCode() int {
 	return r.exitCode
 }
 
+// Foreground returns the current foreground process group.
+func (r *Runner) Foreground() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ForegroundPgid
+}
+
 // Result captures the exit status.
 type Result struct {
 	Status int
@@ -50,6 +68,9 @@ func (r *Runner) RunPlan(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer)
 	}
 	if r.Trace && r.TraceWriter == nil {
 		r.TraceWriter = io.Discard
+	}
+	if r.Interactive && r.ShellPgid == 0 {
+		r.ShellPgid = unix.Getpgrp()
 	}
 	status := r.runChain(p, stdin, stdout, stderr)
 	return Result{Status: status}
@@ -186,10 +207,13 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 		return 0
 	}
 	defer cleanup()
+	cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return exitStatus(err)
 	}
+	r.attachForeground(cmd.Process.Pid)
 	err = cmd.Wait()
+	r.restoreForeground()
 	return exitStatus(err)
 }
 
@@ -254,6 +278,35 @@ func (r *Runner) expandArgv(p *ExecPlan, env *Env) ([]string, error) {
 		return p.Argv, nil
 	}
 	return ExpandCall(p.Call, env)
+}
+
+func (r *Runner) attachForeground(pid int) {
+	if !r.Interactive || r.TTYFD <= 0 {
+		return
+	}
+	pgid, err := unix.Getpgid(pid)
+	if err != nil {
+		return
+	}
+	r.mu.Lock()
+	r.ForegroundPgid = pgid
+	r.mu.Unlock()
+	_ = unix.IoctlSetInt(r.TTYFD, unix.TIOCSPGRP, pgid)
+}
+
+func (r *Runner) restoreForeground() {
+	if !r.Interactive || r.TTYFD <= 0 {
+		r.mu.Lock()
+		r.ForegroundPgid = 0
+		r.mu.Unlock()
+		return
+	}
+	if r.ShellPgid != 0 {
+		_ = unix.IoctlSetInt(r.TTYFD, unix.TIOCSPGRP, r.ShellPgid)
+	}
+	r.mu.Lock()
+	r.ForegroundPgid = 0
+	r.mu.Unlock()
 }
 
 func (r *Runner) tracef(format string, args ...any) {

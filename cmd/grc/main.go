@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 
 	"github.com/peterh/liner"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"grc/internal/eval"
@@ -70,6 +72,24 @@ func runInteractive(noexec, printplan, trace bool) {
 	}
 
 	env := eval.NewEnv(nil)
+	runner := &eval.Runner{
+		Env:         env,
+		Trace:       trace,
+		TraceWriter: os.Stderr,
+		Interactive: true,
+		TTYFD:       int(os.Stdin.Fd()),
+	}
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt)
+	defer signal.Stop(sigc)
+	go func() {
+		for range sigc {
+			pgid := runner.Foreground()
+			if pgid != 0 {
+				_ = unix.Kill(-pgid, unix.SIGINT)
+			}
+		}
+	}()
 	for {
 		prompt := "; "
 		if vals := env.Get("prompt"); len(vals) > 0 {
@@ -107,7 +127,6 @@ func runInteractive(noexec, printplan, trace bool) {
 		if noexec {
 			continue
 		}
-		runner := &eval.Runner{Env: env, Trace: trace, TraceWriter: os.Stderr}
 		result := runner.RunPlan(plan, strings.NewReader(""), os.Stdout, os.Stderr)
 		if runner.ExitRequested() {
 			os.Exit(runner.ExitCode())
