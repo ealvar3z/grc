@@ -1,0 +1,2 @@
+printf %s hi#there
+printf %s ok

@@ -19,11 +19,11 @@ type Lexer struct {
 	peeked bool
 	peek   lexRune
 
-	pendingTok   int
-	pendingVal   *Node
-	prevConcat   bool
+	pendingTok    int
+	pendingVal    *Node
+	prevConcat    bool
 	prevWasDollar bool
-	sawSpace     bool
+	sawSpace      bool
 }
 
 type lexRune struct {
@@ -59,12 +59,32 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 		}
 
 		switch r {
+		case '\\':
+			next, _, _, err := lx.peekRune()
+			if err == nil && next == '\n' {
+				_, _, _, _ = lx.readRune()
+				lx.sawSpace = true
+				lx.prevWasDollar = false
+				continue
+			}
+			word := lx.readWordTail(r)
+			if word == "" {
+				return 0
+			}
+			node := W(word)
+			node.Pos = Pos{Line: line, Col: col}
+			return lx.emitToken(WORD, node, lval)
 		case ' ', '\t':
 			lx.sawSpace = true
 			if lx.prevWasDollar {
 				lx.prevWasDollar = false
 			}
 			continue
+		case '#':
+			if lx.prevWasDollar && !lx.sawSpace {
+				return lx.emitToken(COUNT, nil, lval)
+			}
+			return lx.skipComment()
 		case '\n':
 			lx.prevConcat = false
 			lx.prevWasDollar = false
@@ -160,6 +180,17 @@ func (lx *Lexer) readWordTail(first rune) string {
 		if err != nil {
 			break
 		}
+		if r == '\\' {
+			_, _, _, _ = lx.readRune()
+			next, _, _, err := lx.peekRune()
+			if err == nil && next == '\n' {
+				_, _, _, _ = lx.readRune()
+				lx.sawSpace = true
+				break
+			}
+			b.WriteRune('\\')
+			continue
+		}
 		if isWordBreak(r) {
 			break
 		}
@@ -177,6 +208,17 @@ func (lx *Lexer) readIdentTail(first rune) string {
 		if err != nil {
 			break
 		}
+		if r == '\\' {
+			_, _, _, _ = lx.readRune()
+			next, _, _, err := lx.peekRune()
+			if err == nil && next == '\n' {
+				_, _, _, _ = lx.readRune()
+				lx.sawSpace = true
+				break
+			}
+			b.WriteRune('\\')
+			continue
+		}
 		if !isIdentRune(r) {
 			break
 		}
@@ -188,7 +230,7 @@ func (lx *Lexer) readIdentTail(first rune) string {
 
 func isWordBreak(r rune) bool {
 	switch r {
-	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>':
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '{', '}', '=', '^', '$', '"', '\'', '`', '<', '>', '#':
 		return true
 	default:
 		return false
@@ -274,6 +316,12 @@ func (lx *Lexer) readSingleQuoted() (string, bool) {
 			return "", false
 		}
 		if r == '\'' {
+			next, _, _, err := lx.peekRune()
+			if err == nil && next == '\'' {
+				_, _, _, _ = lx.readRune()
+				b.WriteRune('\'')
+				continue
+			}
 			return b.String(), true
 		}
 		b.WriteRune(r)
@@ -335,9 +383,27 @@ func canConcatToken(tok int) bool {
 
 func canConcatTokenAfterDollar(tok int) bool {
 	switch tok {
-	case WORD, int('`'), int('"'):
+	case WORD, COUNT, int('`'), int('"'):
 		return true
 	default:
 		return false
+	}
+}
+
+func (lx *Lexer) skipComment() int {
+	for {
+		r, _, _, err := lx.readRune()
+		if err != nil {
+			lx.prevConcat = false
+			lx.prevWasDollar = false
+			lx.sawSpace = false
+			return 0
+		}
+		if r == '\n' {
+			lx.prevConcat = false
+			lx.prevWasDollar = false
+			lx.sawSpace = false
+			return int('\n')
+		}
 	}
 }

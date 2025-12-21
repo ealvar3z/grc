@@ -112,6 +112,48 @@ func TestLexerSingleQuoted(t *testing.T) {
 	assertTokens(t, input, want)
 }
 
+func TestLexerSingleQuoteEscape(t *testing.T) {
+	input := "echo 'a''b' x\n"
+	want := []tokPair{
+		{tok: WORD, text: "echo", hasText: true},
+		{tok: WORD, text: "a'b", hasText: true},
+		{tok: WORD, text: "x", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
+
+func TestLexerComment(t *testing.T) {
+	input := "echo hi#there\n"
+	want := []tokPair{
+		{tok: WORD, text: "echo", hasText: true},
+		{tok: WORD, text: "hi", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
+
+func TestLexerCommentInQuote(t *testing.T) {
+	input := "echo '#'\n"
+	want := []tokPair{
+		{tok: WORD, text: "echo", hasText: true},
+		{tok: WORD, text: "#", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
+
+func TestLexerBackslashNewline(t *testing.T) {
+	input := "echo a\\\n b\n"
+	want := []tokPair{
+		{tok: WORD, text: "echo", hasText: true},
+		{tok: WORD, text: "a", hasText: true},
+		{tok: WORD, text: "b", hasText: true},
+		{tok: int('\n')},
+	}
+	assertTokens(t, input, want)
+}
+
 func TestLexerFreeCaretDollar(t *testing.T) {
 	input := "-$x\n"
 	want := []tokPair{
