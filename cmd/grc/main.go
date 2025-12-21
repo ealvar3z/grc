@@ -71,7 +71,11 @@ func runInteractive(noexec, printplan, trace bool) {
 
 	env := eval.NewEnv(nil)
 	for {
-		input, err := line.Prompt("grc> ")
+		prompt := "; "
+		if vals := env.Get("prompt"); len(vals) > 0 {
+			prompt = strings.Join(vals, " ") + " "
+		}
+		input, err := line.Prompt(prompt)
 		if err == liner.ErrPromptAborted {
 			continue
 		}
