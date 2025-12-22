@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,21 +19,31 @@ import (
 const version = "dev"
 
 func main() {
-	noexec := flag.Bool("n", false, "parse and build only")
-	printplan := flag.Bool("p", false, "print plan")
-	trace := flag.Bool("x", false, "trace commands")
-	flag.Parse()
-
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		runInteractive(*noexec, *printplan, *trace)
-		return
-	}
-	runScript(*noexec, *printplan, *trace, os.Stdin)
-}
-
-func runScript(noexec, printplan, trace bool, rd io.Reader) {
+	opts, args := parseArgs(os.Args[1:])
 	env := eval.NewEnv(nil)
 	initEnv(env)
+	initStar(env, os.Args[0], args)
+
+	if opts.command != "" {
+		runCommand(opts, env, opts.command)
+		return
+	}
+	if len(args) > 0 && !opts.readStdin {
+		runDotFile(opts, env, args)
+		return
+	}
+	interactive := opts.interactive
+	if !opts.interactiveForced && !opts.interactiveDisabled {
+		interactive = term.IsTerminal(int(os.Stdin.Fd()))
+	}
+	if interactive {
+		runInteractive(opts, env)
+		return
+	}
+	runScript(opts, env, os.Stdin)
+}
+
+func runScript(opts options, env *eval.Env, rd io.Reader) {
 	ast, err := parse.ParseAll(rd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -45,13 +54,13 @@ func runScript(noexec, printplan, trace bool, rd io.Reader) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if printplan {
+	if opts.printplan {
 		fmt.Fprint(os.Stderr, eval.DumpPlan(plan))
 	}
-	if noexec {
+	if opts.noexec {
 		os.Exit(0)
 	}
-	runner := &eval.Runner{Env: env, Trace: trace, TraceWriter: os.Stderr}
+	runner := &eval.Runner{Env: env, Trace: opts.trace, TraceWriter: os.Stderr}
 	result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
 	if runner.ExitRequested() {
 		os.Exit(runner.ExitCode())
@@ -61,19 +70,60 @@ func runScript(noexec, printplan, trace bool, rd io.Reader) {
 	}
 }
 
-func runInteractive(noexec, printplan, trace bool) {
-	line := liner.NewLiner()
-	defer line.Close()
-	line.SetCtrlCAborts(true)
+func runCommand(opts options, env *eval.Env, cmd string) {
+	runScript(opts, env, strings.NewReader(cmd))
+}
 
-	env := eval.NewEnv(nil)
-	initEnv(env)
+func runDotFile(opts options, env *eval.Env, args []string) {
+	if opts.noexec {
+		if len(args) == 0 {
+			return
+		}
+		f, err := os.Open(args[0])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		_, err = parse.ParseAll(f)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	runner := &eval.Runner{Env: env, Trace: opts.trace, TraceWriter: os.Stderr}
+	status := runner.RunPlan(
+		&eval.ExecPlan{Kind: eval.PlanCmd, Argv: append([]string{"."}, args...)},
+		os.Stdin,
+		os.Stdout,
+		os.Stderr,
+	)
+	if runner.ExitRequested() {
+		os.Exit(runner.ExitCode())
+	}
+	if status.Status != 0 {
+		os.Exit(status.Status)
+	}
+}
+
+func runInteractive(opts options, env *eval.Env) {
+	line := liner.NewLiner()
+	line.SetCtrlCAborts(true)
+	defer func() {
+		if line != nil {
+			line.Close()
+		}
+	}()
+
 	runner := &eval.Runner{
 		Env:         env,
-		Trace:       trace,
+		Trace:       opts.trace,
 		TraceWriter: os.Stderr,
 	}
+	runner.JobControl = false
 	historyPath := historyPathFromEnv(env)
+	var historyLines []string
 	if historyPath != "" {
 		if f, err := os.Open(historyPath); err == nil {
 			defer f.Close()
@@ -83,15 +133,13 @@ func runInteractive(noexec, printplan, trace bool) {
 	ttyfd := int(os.Stdin.Fd())
 	runner.Interactive = true
 	runner.TTYFD = ttyfd
+	var origState *term.State
 	if ttyfd > 0 {
-		pid := os.Getpid()
-		_ = syscall.Setpgid(0, 0)
-		shellPgid, _ := syscall.Getpgid(pid)
-		runner.ShellPgid = shellPgid
-		signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN, syscall.SIGTSTP)
-		defer signal.Reset(syscall.SIGTTOU, syscall.SIGTTIN, syscall.SIGTSTP)
-		_ = unix.IoctlSetPointerInt(ttyfd, unix.TIOCSPGRP, shellPgid)
+		if st, err := term.GetState(ttyfd); err == nil {
+			origState = st
+		}
 	}
+	initJobControl(runner)
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt)
 	defer signal.Stop(sigc)
@@ -106,7 +154,7 @@ func runInteractive(noexec, printplan, trace bool) {
 		}
 	}()
 	for {
-		if !noexec {
+		if !opts.noexec {
 			if _, ok := env.GetFunc("prompt"); ok {
 				_ = runner.CallFunc("prompt", nil, os.Stdin, os.Stdout, os.Stderr)
 			}
@@ -128,6 +176,7 @@ func runInteractive(noexec, printplan, trace bool) {
 			continue
 		}
 		line.AppendHistory(input)
+		historyLines = append(historyLines, input)
 		appendHistory(env, input)
 
 		ast, err := parse.ParseAll(strings.NewReader(input + "\n"))
@@ -140,13 +189,28 @@ func runInteractive(noexec, printplan, trace bool) {
 			fmt.Fprintln(os.Stderr, err)
 			continue
 		}
-		if printplan {
+		if opts.printplan {
 			fmt.Fprint(os.Stderr, eval.DumpPlan(plan))
 		}
-		if noexec {
+		if opts.noexec {
 			continue
 		}
+		line.Close()
+		if origState != nil {
+			_ = term.Restore(ttyfd, origState)
+		}
 		result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
+		line = liner.NewLiner()
+		line.SetCtrlCAborts(true)
+		if historyPath != "" {
+			if f, err := os.Open(historyPath); err == nil {
+				_, _ = line.ReadHistory(f)
+				_ = f.Close()
+			}
+		}
+		for _, h := range historyLines {
+			line.AppendHistory(h)
+		}
 		if runner.ExitRequested() {
 			os.Exit(runner.ExitCode())
 		}
@@ -159,6 +223,63 @@ func runInteractive(noexec, printplan, trace bool) {
 			_, _ = line.WriteHistory(f)
 		}
 	}
+}
+
+type options struct {
+	noexec              bool
+	printplan           bool
+	trace               bool
+	readStdin           bool
+	interactive         bool
+	interactiveForced   bool
+	interactiveDisabled bool
+	command             string
+}
+
+func parseArgs(args []string) (options, []string) {
+	var opts options
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			rest = append(rest, args[i:]...)
+			break
+		}
+		if arg == "--" {
+			rest = append(rest, args[i+1:]...)
+			break
+		}
+		for j := 1; j < len(arg); j++ {
+			switch arg[j] {
+			case 'c':
+				if i+1 < len(args) {
+					opts.command = args[i+1]
+					i++
+				}
+			case 'n':
+				opts.noexec = true
+			case 'p':
+				opts.printplan = true
+			case 'x':
+				opts.trace = true
+			case 's':
+				opts.readStdin = true
+			case 'i':
+				opts.interactive = true
+				opts.interactiveForced = true
+			case 'I':
+				opts.interactive = false
+				opts.interactiveDisabled = true
+			case 'l':
+				// login flag; no behavior yet
+			case 'd', 'e', 'o', 'v':
+				// reserved: parser/exec flags in rc
+			default:
+				// unknown flag ignored
+			}
+		}
+	}
+	return opts, rest
 }
 
 func historyPathFromEnv(env *eval.Env) string {
@@ -341,4 +462,35 @@ func initEnv(env *eval.Env) {
 	if vals := env.Get("version"); len(vals) == 0 {
 		env.Set("version", []string{version})
 	}
+}
+
+func initStar(env *eval.Env, argv0 string, args []string) {
+	if env == nil {
+		return
+	}
+	env.Set("0", []string{argv0})
+	env.Set("*", args)
+}
+
+func initJobControl(runner *eval.Runner) {
+	ttyfd := runner.TTYFD
+	if ttyfd <= 0 {
+		return
+	}
+	pid := os.Getpid()
+	_ = syscall.Setpgid(0, 0)
+	shellPgid, _ := syscall.Getpgid(pid)
+	runner.ShellPgid = shellPgid
+	runner.Interactive = true
+
+	for {
+		pgrp, err := unix.IoctlGetInt(ttyfd, unix.TIOCGPGRP)
+		if err != nil || pgrp == shellPgid {
+			break
+		}
+		_ = unix.Kill(-shellPgid, unix.SIGTTIN)
+	}
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
+	_ = unix.IoctlSetPointerInt(ttyfd, unix.TIOCSPGRP, shellPgid)
 }

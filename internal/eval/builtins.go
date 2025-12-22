@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"grc/internal/parse"
 )
 
 // Builtin executes a built-in command and returns an exit status.
@@ -17,6 +21,8 @@ func defaultBuiltins() map[string]Builtin {
 		"apid": builtinAPID,
 		"bg":   builtinBG,
 		"cd":   builtinCD,
+		".":    builtinDot,
+		"exec": builtinExec,
 		"fg":   builtinFG,
 		"jobs": builtinJobs,
 		"pwd":  builtinPWD,
@@ -80,6 +86,144 @@ func builtinExit(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Ru
 		r.exitCode = code
 	}
 	return code
+}
+
+func builtinExec(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stdout
+	if len(args) < 2 {
+		return 0
+	}
+	argv := args[1:]
+	path, err := lookupPath(argv[0], r.Env)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 127
+	}
+	envList := buildExecEnv(r.Env)
+	if err := syscall.Exec(path, argv, envList); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 127
+	}
+	return 0
+}
+
+func builtinDot(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	if len(args) < 2 || r == nil || r.Env == nil {
+		return 0
+	}
+	i := 1
+	interactive := false
+	if args[i] == "-i" {
+		interactive = true
+		i++
+		if i >= len(args) {
+			return 0
+		}
+	}
+	path := args[i]
+	rest := []string{}
+	if i+1 < len(args) {
+		rest = args[i+1:]
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer f.Close()
+
+	oldStar, hadStar := r.Env.GetLocal("*")
+	oldZero, hadZero := r.Env.GetLocal("0")
+	r.Env.Set("*", rest)
+	r.Env.Set("0", []string{path})
+
+	oldInteractive := r.Interactive
+	if interactive {
+		r.Interactive = true
+	}
+	ast, err := parse.ParseAll(f)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		r.Interactive = oldInteractive
+		restoreVar(r.Env, "*", oldStar, hadStar)
+		restoreVar(r.Env, "0", oldZero, hadZero)
+		return 1
+	}
+	plan, err := BuildPlan(ast, r.Env)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		r.Interactive = oldInteractive
+		restoreVar(r.Env, "*", oldStar, hadStar)
+		restoreVar(r.Env, "0", oldZero, hadZero)
+		return 1
+	}
+	status := r.runChain(plan, stdin, stdout, stderr)
+	r.Interactive = oldInteractive
+	restoreVar(r.Env, "*", oldStar, hadStar)
+	restoreVar(r.Env, "0", oldZero, hadZero)
+	return status
+}
+
+func restoreVar(env *Env, name string, val []string, had bool) {
+	if env == nil {
+		return
+	}
+	if had {
+		env.Set(name, val)
+	} else {
+		env.Unset(name)
+	}
+}
+
+func lookupPath(name string, env *Env) (string, error) {
+	if strings.ContainsRune(name, '/') {
+		return name, nil
+	}
+	pathList := []string{}
+	if env != nil {
+		if vals := env.Get("path"); len(vals) > 0 {
+			pathList = vals
+		}
+	}
+	if len(pathList) == 0 {
+		pathList = strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
+	}
+	for _, dir := range pathList {
+		if dir == "" {
+			dir = "."
+		}
+		full := filepath.Join(dir, name)
+		info, err := os.Stat(full)
+		if err != nil {
+			continue
+		}
+		if info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			return full, nil
+		}
+	}
+	return "", fmt.Errorf("%s: not found", name)
+}
+
+func buildExecEnv(env *Env) []string {
+	base := map[string]string{}
+	for _, kv := range os.Environ() {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		base[parts[0]] = parts[1]
+	}
+	if env != nil {
+		for k, v := range env.Snapshot() {
+			base[k] = strings.Join(v, " ")
+		}
+	}
+	out := make([]string, 0, len(base))
+	for k, v := range base {
+		out = append(out, k+"="+v)
+	}
+	return out
 }
 
 func builtinJobs(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {

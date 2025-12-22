@@ -23,6 +23,7 @@ type Runner struct {
 	Trace          bool
 	TraceWriter    io.Writer
 	Interactive    bool
+	JobControl     bool
 	TTYFD          int
 	ShellPgid      int
 	ForegroundPgid int
@@ -243,7 +244,9 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	defer leftCleanup()
 	defer rightCleanup()
 
-	leftCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	if background || r.JobControl {
+		leftCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	}
 	if err := leftCmd.Start(); err != nil {
 		_ = pw.Close()
 		_ = pr.Close()
@@ -251,7 +254,9 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	}
 	leader := leftCmd.Process.Pid
 
-	rightCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true, Pgid: leader}
+	if background || r.JobControl {
+		rightCmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true, Pgid: leader}
+	}
 	if err := rightCmd.Start(); err != nil {
 		_ = leftCmd.Process.Kill()
 		_ = leftCmd.Wait()
@@ -267,7 +272,9 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 		go r.waitJobPids(job, []int{leftCmd.Process.Pid, rightCmd.Process.Pid})
 		return 0, true
 	}
-	r.attachForeground(leader)
+	if r.JobControl {
+		r.attachForeground(leader)
+	}
 	leftDone := make(chan int, 1)
 	rightDone := make(chan int, 1)
 	go func() {
@@ -280,7 +287,9 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	}()
 	_ = <-leftDone
 	status := <-rightDone
-	r.restoreForeground()
+	if r.JobControl {
+		r.restoreForeground()
+	}
 	return status, true
 }
 
@@ -393,7 +402,7 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 	defer cleanup()
 	if wantPgid != 0 {
 		cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true, Pgid: wantPgid}
-	} else {
+	} else if background || r.JobControl {
 		cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
 	}
 	if err := cmd.Start(); err != nil {
@@ -408,9 +417,15 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 		go r.waitJobPids(job, []int{cmd.Process.Pid})
 		return 0
 	}
-	r.attachForeground(cmd.Process.Pid)
-	err = cmd.Wait()
-	r.restoreForeground()
+	if r.JobControl {
+		r.attachForeground(cmd.Process.Pid)
+		err = cmd.Wait()
+		r.restoreForeground()
+	} else {
+		signal.Ignore(syscall.SIGINT)
+		err = cmd.Wait()
+		signal.Reset(syscall.SIGINT)
+	}
 	return exitStatus(err)
 }
 

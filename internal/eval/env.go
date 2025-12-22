@@ -43,6 +43,34 @@ func (e *Env) Get(name string) []string {
 	return nil
 }
 
+// GetLocal returns the value for name in the current env only.
+func (e *Env) GetLocal(name string) ([]string, bool) {
+	if e == nil || e.vars == nil {
+		return nil, false
+	}
+	v, ok := e.vars[name]
+	return v, ok
+}
+
+// Snapshot returns a merged view of variables from this env chain.
+func (e *Env) Snapshot() map[string][]string {
+	out := make(map[string][]string)
+	var walk func(cur *Env)
+	walk = func(cur *Env) {
+		if cur == nil {
+			return
+		}
+		if cur.parent != nil {
+			walk(cur.parent)
+		}
+		for k, v := range cur.vars {
+			out[k] = v
+		}
+	}
+	walk(e)
+	return out
+}
+
 // Set assigns the variable to the provided list.
 func (e *Env) Set(name string, vals []string) {
 	if e == nil {

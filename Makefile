@@ -1,4 +1,6 @@
 PREFIX ?= /usr/local
+DEV ?= /home/eax/.go
+DEVDIR ?= $(DEV)/bin
 BINDIR ?= $(PREFIX)/bin
 GO ?= go
 
@@ -12,6 +14,10 @@ test:
 
 check: test
 
+dev: grc
+	install -d $(DEV)$(DEVDIR)
+	install -m 755 grc $(DEV)$(DEVDIR)/grc
+
 install: grc
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 grc $(DESTDIR)$(BINDIR)/grc
@@ -21,4 +27,4 @@ clean:
 
 distclean: clean
 
-.PHONY: all grc test check install clean distclean
+.PHONY: all grc test check dev install clean distclean
