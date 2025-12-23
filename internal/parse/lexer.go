@@ -425,6 +425,16 @@ func (lx *Lexer) EOF() bool {
 }
 
 func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
+	if lx.pendingHere != nil && lx.hereMarker == "" && tok != WORD && tok != SREDIR {
+		lx.Error("eof-marker not a single literal word")
+		lx.skipToNL()
+		return HUH
+	}
+	if tok == int('^') && lx.pendingHere != nil && lx.hereMarker != "" && !lx.sawSpace {
+		lx.Error("eof-marker not a single literal word")
+		lx.skipToNL()
+		return HUH
+	}
 	if tok == int('$') {
 		if !lx.sawSpace && lx.prevConcat {
 			lx.pendingTok = tok
@@ -448,6 +458,11 @@ func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
 		return tok
 	}
 	if !lx.sawSpace && lx.prevConcat && canConcatToken(tok) {
+		if lx.pendingHere != nil && lx.hereMarker != "" {
+			lx.Error("eof-marker not a single literal word")
+			lx.skipToNL()
+			return HUH
+		}
 		lx.pendingTok = tok
 		lx.pendingVal = node
 		lx.prevConcat = false
