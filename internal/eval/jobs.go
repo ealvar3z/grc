@@ -71,6 +71,25 @@ func (r *Runner) findJobByPgid(pgid int) *Job {
 	return nil
 }
 
+func (r *Runner) findJobByPID(pid int) *Job {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, job := range r.Jobs {
+		if job.Pgid == pid {
+			return job
+		}
+		for _, p := range job.Pids {
+			if p == pid {
+				return job
+			}
+		}
+	}
+	return nil
+}
+
 func (r *Runner) waitJob(job *Job) int {
 	if job == nil {
 		return 1

@@ -6,6 +6,8 @@ import (
 	"grc/internal/parse"
 )
 
+const fdUnset = -9
+
 // RedirPlan captures a redirection operator and its target words.
 type RedirPlan struct {
 	Op     string
@@ -13,6 +15,7 @@ type RedirPlan struct {
 	Fd     int
 	DupTo  int
 	Close  bool
+	Nmpipe *parse.Node
 }
 
 // ExecPlan is a dry-run execution plan.
@@ -199,6 +202,22 @@ func BuildPlan(ast *parse.Node, env *Env) (*ExecPlan, error) {
 		}
 		plan.Redirs = append(plan.Redirs, RedirPlan{Op: ast.Tok, Target: target, Fd: ast.I1})
 		return plan, nil
+	case parse.KNmpipe:
+		plan, err := BuildPlan(ast.Left, env)
+		if err != nil {
+			return nil, err
+		}
+		if plan == nil {
+			plan = &ExecPlan{}
+		}
+		fd := fdUnset
+		op := ""
+		if ast.Left != nil && ast.Left.Kind == parse.KRedir {
+			fd = ast.Left.I1
+			op = ast.Left.Tok
+		}
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: op + "{", Fd: fd, Nmpipe: ast.Right})
+		return plan, nil
 	case parse.KCall:
 		argv, err := ExpandCall(ast, env)
 		if err != nil {
@@ -332,6 +351,19 @@ func applyRedirsFromNode(plan *ExecPlan, n *parse.Node, env *Env) error {
 	}
 	if n.Kind == parse.KDup {
 		plan.Redirs = append(plan.Redirs, RedirPlan{Op: "dup", Fd: n.I1, DupTo: n.I2, Close: n.I2 < 0})
+		return nil
+	}
+	if n.Kind == parse.KNmpipe {
+		if n.Left == nil || n.Right == nil {
+			return nil
+		}
+		fd := fdUnset
+		op := ""
+		if n.Left.Kind == parse.KRedir {
+			fd = n.Left.I1
+			op = n.Left.Tok
+		}
+		plan.Redirs = append(plan.Redirs, RedirPlan{Op: op + "{", Fd: fd, Nmpipe: n.Right})
 		return nil
 	}
 	return nil

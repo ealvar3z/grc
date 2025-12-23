@@ -31,6 +31,7 @@ func defaultBuiltins() map[string]Builtin {
 		"which": builtinWhich,
 		"shift": builtinShift,
 		"return": builtinReturn,
+		"wait": builtinWait,
 	}
 }
 
@@ -273,6 +274,40 @@ func builtinReturn(stdin io.Reader, stdout, stderr io.Writer, args []string, r *
 		r.requestReturn(code)
 	}
 	return code
+}
+
+func builtinWait(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stdout
+	if r == nil {
+		return 1
+	}
+	if len(args) == 1 {
+		jobs := r.listJobs()
+		if len(jobs) == 0 {
+			return 0
+		}
+		status := 0
+		for _, job := range jobs {
+			status = r.waitJob(job)
+		}
+		return status
+	}
+	status := 0
+	for _, a := range args[1:] {
+		pid, err := parseInt(a)
+		if err != nil || pid <= 0 {
+			fmt.Fprintf(stderr, "rc: `%s' is a bad number\n", a)
+			return 1
+		}
+		job := r.findJobByPID(pid)
+		if job == nil {
+			fmt.Fprintf(stderr, "rc: `%s' is not a child\n", a)
+			return 1
+		}
+		status = r.waitJob(job)
+	}
+	return status
 }
 
 func restoreVar(env *Env, name string, val []string, had bool) {

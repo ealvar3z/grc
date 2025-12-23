@@ -242,7 +242,7 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 		_ = pr.Close()
 		return 127, true
 	}
-	leftCmd, leftCleanup, err := buildCmd(leftPath, leftPrep.argv, left, stdin, pw, stderr)
+	leftCmd, leftCleanup, err := buildCmd(leftPath, leftPrep.argv, left, r, stdin, pw, stderr)
 	if err != nil {
 		_ = pw.Close()
 		_ = pr.Close()
@@ -255,7 +255,7 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 		_ = pr.Close()
 		return 127, true
 	}
-	rightCmd, rightCleanup, err := buildCmd(rightPath, rightPrep.argv, right, pr, stdout, stderr)
+	rightCmd, rightCleanup, err := buildCmd(rightPath, rightPrep.argv, right, r, pr, stdout, stderr)
 	if err != nil {
 		leftCleanup()
 		_ = pw.Close()
@@ -398,7 +398,7 @@ func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *En
 	in := stdin
 	out := stdout
 	errOut := stderr
-	files, err := applyRedirs(p, &in, &out, &errOut)
+	files, err := applyRedirs(p, r, &in, &out, &errOut)
 	if err != nil {
 		return 1
 	}
@@ -417,7 +417,7 @@ func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout
 	if !ok {
 		return 127
 	}
-	cmd, cleanup, err := buildCmd(execPath, argv, p, stdin, stdout, stderr)
+	cmd, cleanup, err := buildCmd(execPath, argv, p, r, stdin, stdout, stderr)
 	if err != nil {
 		return 127
 	}
@@ -458,7 +458,7 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 	in := stdin
 	out := stdout
 	errOut := stderr
-	files, err := applyRedirs(p, &in, &out, &errOut)
+	files, err := applyRedirs(p, r, &in, &out, &errOut)
 	if err != nil {
 		return 1
 	}
@@ -622,7 +622,7 @@ func (r *Runner) runMatch(p *ExecPlan) int {
 	return 1
 }
 
-func buildCmd(path string, argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
+func buildCmd(path string, argv []string, p *ExecPlan, r *Runner, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
 	if p == nil || len(argv) == 0 {
 		return nil, func() {}, nil
 	}
@@ -632,7 +632,7 @@ func buildCmd(path string, argv []string, p *ExecPlan, stdin io.Reader, stdout, 
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	files, err := applyRedirs(p, &cmd.Stdin, &cmd.Stdout, &cmd.Stderr)
+	files, err := applyRedirs(p, r, &cmd.Stdin, &cmd.Stdout, &cmd.Stderr)
 	cleanup := func() {
 		for _, f := range files {
 			_ = f.Close()
@@ -766,27 +766,35 @@ func (r *Runner) requestReturn(code int) {
 	r.returnCode = code
 }
 
-func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*os.File, error) {
+func applyRedirs(p *ExecPlan, runner *Runner, stdin *io.Reader, stdout, stderr *io.Writer) ([]*os.File, error) {
 	if p == nil {
 		return nil, nil
 	}
 	var files []*os.File
-	for _, r := range p.Redirs {
-		if r.Op == "dup" {
-			if err := applyDup(r, stdin, stdout, stderr, &files); err != nil {
+	for _, redir := range p.Redirs {
+		if redir.Nmpipe != nil {
+			nf, err := applyNmpipe(redir, runner, stdin, stdout, stderr)
+			if err != nil {
+				return files, err
+			}
+			files = append(files, nf...)
+			continue
+		}
+		if redir.Op == "dup" {
+			if err := applyDup(redir, stdin, stdout, stderr, &files); err != nil {
 				return files, err
 			}
 			continue
 		}
-		if len(r.Target) == 0 {
+		if len(redir.Target) == 0 {
 			continue
 		}
-		path := r.Target[0]
-		fd := r.Fd
+		path := redir.Target[0]
+		fd := redir.Fd
 		if fd < 0 {
-			fd = defaultRedirFD(r.Op)
+			fd = defaultRedirFD(redir.Op)
 		}
-		switch r.Op {
+		switch redir.Op {
 		case ">":
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
 			if err != nil {
@@ -829,10 +837,10 @@ func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*o
 			files = append(files, f)
 		case "<<", "<<<":
 			sep := ""
-			if r.Op == "<<<" {
+			if redir.Op == "<<<" {
 				sep = " "
 			}
-			data := strings.Join(r.Target, sep)
+			data := strings.Join(redir.Target, sep)
 			pr, pw, err := os.Pipe()
 			if err != nil {
 				return files, err
@@ -850,8 +858,56 @@ func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*o
 				_ = pw.Close()
 			}()
 		default:
-			return files, fmt.Errorf("unsupported redirection: %s", r.Op)
+			return files, fmt.Errorf("unsupported redirection: %s", redir.Op)
 		}
+	}
+	return files, nil
+}
+
+func applyNmpipe(redir RedirPlan, runner *Runner, stdin *io.Reader, stdout, stderr *io.Writer) ([]*os.File, error) {
+	if runner == nil || runner.Env == nil || redir.Nmpipe == nil {
+		return nil, fmt.Errorf("nmpipe missing runner")
+	}
+	fd := redir.Fd
+	if fd < 0 {
+		fd = defaultRedirFD(redir.Op)
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	var files []*os.File
+	switch {
+	case strings.HasPrefix(redir.Op, "<"):
+		if err := assignFD(fd, stdin, stdout, stderr, pr); err != nil {
+			_ = pr.Close()
+			_ = pw.Close()
+			return nil, err
+		}
+		files = append(files, pr)
+		in := *stdin
+		errOut := *stderr
+		go func(out *os.File) {
+			_ = runner.runAST(redir.Nmpipe, in, out, errOut)
+			_ = out.Close()
+		}(pw)
+	case strings.HasPrefix(redir.Op, ">"):
+		if err := assignFD(fd, stdin, stdout, stderr, pw); err != nil {
+			_ = pr.Close()
+			_ = pw.Close()
+			return nil, err
+		}
+		files = append(files, pw)
+		out := *stdout
+		errOut := *stderr
+		go func(in *os.File) {
+			_ = runner.runAST(redir.Nmpipe, in, out, errOut)
+			_ = in.Close()
+		}(pr)
+	default:
+		_ = pr.Close()
+		_ = pw.Close()
+		return nil, fmt.Errorf("unsupported nmpipe op: %s", redir.Op)
 	}
 	return files, nil
 }
