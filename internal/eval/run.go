@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,6 +26,9 @@ type Runner struct {
 	TTYFD          int
 	ShellPgid      int
 	ForegroundPgid int
+	returnRequested bool
+	returnCode      int
+	returnDepth     int
 	mu             sync.Mutex
 	Jobs           map[int]*Job
 	nextJobID      int
@@ -105,6 +107,9 @@ func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		if r.exitRequested {
 			return r.exitCode
 		}
+		if r.returnRequested && r.returnDepth > 0 {
+			return r.returnCode
+		}
 		if cur.Background {
 			status = r.startBackground(cur, stdin, stdout, stderr)
 			r.Env.SetStatus(status)
@@ -114,6 +119,9 @@ func (r *Runner) runChain(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		r.Env.SetStatus(status)
 		if r.exitRequested {
 			return r.exitCode
+		}
+		if r.returnRequested && r.returnDepth > 0 {
+			return r.returnCode
 		}
 		if status == 0 && cur.IfOK != nil {
 			status = r.runChain(cur.IfOK, stdin, stdout, stderr)
@@ -228,13 +236,26 @@ func (r *Runner) runPipeExternal(left, right *ExecPlan, stdin io.Reader, stdout,
 	if err != nil {
 		return 1, true
 	}
-	leftCmd, leftCleanup, err := buildCmd(leftPrep.argv, left, stdin, pw, stderr)
+	leftPath, ok := resolvePath(leftPrep.argv[0], leftPrep.env, true, stderr)
+	if !ok {
+		_ = pw.Close()
+		_ = pr.Close()
+		return 127, true
+	}
+	leftCmd, leftCleanup, err := buildCmd(leftPath, leftPrep.argv, left, stdin, pw, stderr)
 	if err != nil {
 		_ = pw.Close()
 		_ = pr.Close()
 		return 1, true
 	}
-	rightCmd, rightCleanup, err := buildCmd(rightPrep.argv, right, pr, stdout, stderr)
+	rightPath, ok := resolvePath(rightPrep.argv[0], rightPrep.env, true, stderr)
+	if !ok {
+		leftCleanup()
+		_ = pw.Close()
+		_ = pr.Close()
+		return 127, true
+	}
+	rightCmd, rightCleanup, err := buildCmd(rightPath, rightPrep.argv, right, pr, stdout, stderr)
 	if err != nil {
 		leftCleanup()
 		_ = pw.Close()
@@ -392,7 +413,11 @@ func (r *Runner) runBuiltin(builtin Builtin, argv []string, p *ExecPlan, env *En
 }
 
 func (r *Runner) runExternal(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer, background bool, wantPgid int) int {
-	cmd, cleanup, err := buildCmd(argv, p, stdin, stdout, stderr)
+	execPath, ok := resolvePath(argv[0], r.Env, true, stderr)
+	if !ok {
+		return 127
+	}
+	cmd, cleanup, err := buildCmd(execPath, argv, p, stdin, stdout, stderr)
 	if err != nil {
 		return 127
 	}
@@ -445,11 +470,8 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 	if len(argv) > 1 {
 		args = argv[1:]
 	}
-	child.Set("*", args)
+	child.SetPositional(args)
 	child.Set("0", []string{argv[0]})
-	for i, arg := range args {
-		child.Set(strconv.Itoa(i+1), []string{arg})
-	}
 	bodyPlan, err := BuildPlan(def.Body, child)
 	if err != nil {
 		return 1
@@ -461,7 +483,14 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 		r.Env = origEnv
 		return 0
 	}
+	r.returnDepth++
 	status := r.runChain(bodyPlan, in, out, errOut)
+	if r.returnRequested {
+		status = r.returnCode
+		r.returnRequested = false
+		r.returnCode = 0
+	}
+	r.returnDepth--
 	r.Env = origEnv
 	return status
 }
@@ -593,11 +622,12 @@ func (r *Runner) runMatch(p *ExecPlan) int {
 	return 1
 }
 
-func buildCmd(argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
+func buildCmd(path string, argv []string, p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer) (*exec.Cmd, func(), error) {
 	if p == nil || len(argv) == 0 {
 		return nil, func() {}, nil
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := exec.Command(path, argv[1:]...)
+	cmd.Args = argv
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -729,6 +759,11 @@ func (r *Runner) tracef(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(r.TraceWriter, format, args...)
+}
+
+func (r *Runner) requestReturn(code int) {
+	r.returnRequested = true
+	r.returnCode = code
 }
 
 func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*os.File, error) {

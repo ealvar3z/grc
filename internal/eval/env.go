@@ -82,6 +82,25 @@ func (e *Env) Set(name string, vals []string) {
 	e.vars[name] = vals
 }
 
+// SetPositional sets $* and numeric positional parameters.
+func (e *Env) SetPositional(args []string) {
+	if e == nil {
+		return
+	}
+	e.Set("*", args)
+	for i := 1; ; i++ {
+		key := strconv.Itoa(i)
+		if i <= len(args) {
+			e.Set(key, []string{args[i-1]})
+			continue
+		}
+		if _, ok := e.GetLocal(key); !ok {
+			break
+		}
+		e.Unset(key)
+	}
+}
+
 // Set1 assigns a single value to the variable.
 func (e *Env) Set1(name, value string) {
 	e.Set(name, []string{value})

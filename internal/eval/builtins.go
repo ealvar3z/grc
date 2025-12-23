@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -25,8 +24,13 @@ func defaultBuiltins() map[string]Builtin {
 		"exec": builtinExec,
 		"fg":   builtinFG,
 		"jobs": builtinJobs,
+		"newpgrp": builtinNewpgrp,
 		"pwd":  builtinPWD,
 		"exit": builtinExit,
+		"eval": builtinEval,
+		"which": builtinWhich,
+		"shift": builtinShift,
+		"return": builtinReturn,
 	}
 }
 
@@ -95,9 +99,8 @@ func builtinExec(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Ru
 		return 0
 	}
 	argv := args[1:]
-	path, err := lookupPath(argv[0], r.Env)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
+	path, ok := resolvePath(argv[0], r.Env, true, stderr)
+	if !ok {
 		return 127
 	}
 	envList := buildExecEnv(r.Env)
@@ -165,6 +168,113 @@ func builtinDot(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Run
 	return status
 }
 
+func builtinEval(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	if len(args) < 2 || r == nil || r.Env == nil {
+		return 0
+	}
+	src := strings.Join(args[1:], " ")
+	ast, err := parse.ParseAll(strings.NewReader(src))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	plan, err := BuildPlan(ast, r.Env)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return r.runChain(plan, stdin, stdout, stderr)
+}
+
+func builtinWhich(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	if len(args) < 2 {
+		return 0
+	}
+	ok := true
+	for _, name := range args[1:] {
+		path, found := resolvePath(name, r.Env, true, stderr)
+		if !found {
+			ok = false
+			continue
+		}
+		fmt.Fprintln(stdout, path)
+	}
+	if ok {
+		return 0
+	}
+	return 1
+}
+
+func builtinNewpgrp(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stdout
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "newpgrp: too many arguments")
+		return 1
+	}
+	pid := os.Getpid()
+	if err := syscall.Setpgid(0, 0); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if r != nil {
+		r.ShellPgid = pid
+	}
+	_ = unix.IoctlSetPointerInt(2, unix.TIOCSPGRP, pid)
+	return 0
+}
+
+func builtinShift(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stdout
+	if r == nil || r.Env == nil {
+		return 1
+	}
+	shift := 1
+	if len(args) > 2 {
+		fmt.Fprintln(stderr, "shift: too many arguments")
+		return 1
+	}
+	if len(args) == 2 {
+		n, err := parseInt(args[1])
+		if err != nil || n < 0 {
+			fmt.Fprintln(stderr, "shift: bad shift count")
+			return 1
+		}
+		shift = n
+	}
+	argsList := r.Env.Get("*")
+	if shift > len(argsList) {
+		fmt.Fprintln(stderr, "rc: cannot shift")
+		return 1
+	}
+	argsList = argsList[shift:]
+	r.Env.Set("*", argsList)
+	r.Env.SetPositional(argsList)
+	return 0
+}
+
+func builtinReturn(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {
+	_ = stdin
+	_ = stdout
+	_ = stderr
+	code := 0
+	if len(args) > 2 {
+		fmt.Fprintln(stderr, "return: too many arguments")
+		return 1
+	}
+	if len(args) == 2 {
+		if n, err := parseInt(args[1]); err == nil {
+			code = n
+		}
+	}
+	if r != nil {
+		r.requestReturn(code)
+	}
+	return code
+}
+
 func restoreVar(env *Env, name string, val []string, had bool) {
 	if env == nil {
 		return
@@ -174,35 +284,6 @@ func restoreVar(env *Env, name string, val []string, had bool) {
 	} else {
 		env.Unset(name)
 	}
-}
-
-func lookupPath(name string, env *Env) (string, error) {
-	if strings.ContainsRune(name, '/') {
-		return name, nil
-	}
-	pathList := []string{}
-	if env != nil {
-		if vals := env.Get("path"); len(vals) > 0 {
-			pathList = vals
-		}
-	}
-	if len(pathList) == 0 {
-		pathList = strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
-	}
-	for _, dir := range pathList {
-		if dir == "" {
-			dir = "."
-		}
-		full := filepath.Join(dir, name)
-		info, err := os.Stat(full)
-		if err != nil {
-			continue
-		}
-		if info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
-			return full, nil
-		}
-	}
-	return "", fmt.Errorf("%s: not found", name)
 }
 
 func buildExecEnv(env *Env) []string {
