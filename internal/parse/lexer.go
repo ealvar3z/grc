@@ -612,6 +612,15 @@ func (lx *Lexer) readLine() (string, bool) {
 	}
 }
 
+func (lx *Lexer) skipToNL() {
+	for {
+		r, _, _, err := lx.readRune()
+		if err != nil || r == '\n' {
+			break
+		}
+	}
+}
+
 func (lx *Lexer) readPair() bool {
 	r, _, _, err := lx.peekRune()
 	if err != nil || r != '[' {
