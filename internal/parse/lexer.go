@@ -29,6 +29,10 @@ type Lexer struct {
 
 	fdLeft  int
 	fdRight int
+
+	pendingHere *Node
+	hereMarker  string
+	hereQuoted  bool
 }
 
 type lexRune struct {
@@ -74,6 +78,9 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			if lx.endSent {
 				return 0
 			}
+			if lx.hereMarker != "" {
+				lx.Error("heredoc incomplete")
+			}
 			lx.endSent = true
 			return END
 		}
@@ -109,6 +116,9 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			}
 			return lx.skipComment()
 		case '\n':
+			if lx.hereMarker != "" && lx.pendingHere != nil {
+				lx.finishHereDoc()
+			}
 			lx.prevConcat = false
 			lx.prevWasDollar = false
 			lx.sawSpace = false
@@ -145,6 +155,11 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 			return lx.emitToken(tok, node, lval)
 		case '<':
 			node, tok := lx.readRedir('<', line, col)
+			if tok == SREDIR && node.Tok == "<<" {
+				lx.pendingHere = node
+				lx.hereMarker = ""
+				lx.hereQuoted = false
+			}
 			return lx.emitToken(tok, node, lval)
 		case '\'':
 			text, ok := lx.readSingleQuoted()
@@ -153,6 +168,7 @@ func (lx *Lexer) Lex(lval *grcSymType) int {
 				return 0
 			}
 			node := W(text)
+			node.I1 = 1
 			node.Pos = Pos{Line: line, Col: col}
 			lx.wordState = wordRW
 			return lx.emitToken(WORD, node, lval)
@@ -441,6 +457,10 @@ func (lx *Lexer) emitToken(tok int, node *Node, lval *grcSymType) int {
 	if node != nil {
 		lval.node = node
 	}
+	if tok == WORD && node != nil && lx.pendingHere != nil && lx.hereMarker == "" {
+		lx.hereMarker = node.Tok
+		lx.hereQuoted = node.I1 != 0
+	}
 	lx.prevConcat = canConcatToken(tok)
 	lx.prevWasDollar = false
 	lx.sawSpace = false
@@ -516,6 +536,65 @@ func (lx *Lexer) readRedir(op rune, line, col int) (*Node, int) {
 		return dup, DUP
 	}
 	return node, tok
+}
+
+func (lx *Lexer) finishHereDoc() {
+	if lx.hereMarker == "" || lx.pendingHere == nil {
+		return
+	}
+	content, ok := lx.readHereDoc(lx.hereMarker)
+	if !ok {
+		lx.Error("heredoc incomplete")
+		return
+	}
+	if lx.hereQuoted {
+		n := W(content)
+		n.I1 = 1
+		lx.pendingHere.Right = n
+	} else {
+		lx.pendingHere.Right = ParseHereDocContent(content)
+	}
+	lx.pendingHere = nil
+	lx.hereMarker = ""
+	lx.hereQuoted = false
+}
+
+func (lx *Lexer) readHereDoc(marker string) (string, bool) {
+	var b strings.Builder
+	for {
+		line, ok := lx.readLine()
+		if !ok {
+			return "", false
+		}
+		if strings.HasSuffix(line, "\n") {
+			if strings.TrimSuffix(line, "\n") == marker {
+				return b.String(), true
+			}
+			b.WriteString(line)
+			continue
+		}
+		if line == marker {
+			return b.String(), true
+		}
+		return "", false
+	}
+}
+
+func (lx *Lexer) readLine() (string, bool) {
+	var b strings.Builder
+	for {
+		r, _, _, err := lx.readRune()
+		if err != nil {
+			if b.Len() == 0 {
+				return "", false
+			}
+			return b.String(), true
+		}
+		b.WriteRune(r)
+		if r == '\n' {
+			return b.String(), true
+		}
+	}
 }
 
 func (lx *Lexer) readPair() bool {

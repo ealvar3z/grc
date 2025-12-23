@@ -1,0 +1,2315 @@
+
+state 0
+	$accept: .rc $end 
+	cmd: .    (29)
+
+	error  shift 3
+	ANDAND  reduce 29 (src line 56)
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	END  reduce 29 (src line 56)
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	OROR  reduce 29 (src line 56)
+	PIPE  reduce 29 (src line 56)
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  reduce 29 (src line 56)
+	'$'  shift 24
+	';'  reduce 29 (src line 56)
+	'&'  reduce 29 (src line 56)
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	rc  goto 1
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 4
+	cmdsa  goto 5
+	comword  goto 23
+	first  goto 18
+	line  goto 2
+	redir  goto 13
+	simple  goto 6
+
+state 1
+	$accept:  rc.$end 
+
+	$end  accept
+	.  error
+
+
+state 2
+	rc:  line.end 
+
+	END  shift 32
+	'\n'  shift 33
+	.  error
+
+	end  goto 31
+
+state 3
+	rc:  error.end 
+
+	END  shift 32
+	'\n'  shift 33
+	.  error
+
+	end  goto 34
+
+state 4
+	cmdsa:  cmd.';' 
+	cmdsa:  cmd.'&' 
+	line:  cmd.    (7)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	';'  shift 35
+	'&'  shift 36
+	.  reduce 7 (src line 34)
+
+
+state 5
+	line:  cmdsa.line 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 4
+	cmdsa  goto 5
+	comword  goto 23
+	first  goto 18
+	line  goto 40
+	redir  goto 13
+	simple  goto 6
+
+state 6
+	cmd:  simple.    (30)
+
+	.  reduce 30 (src line 57)
+
+
+state 7
+	cmd:  brace.epilog 
+	epilog: .    (16)
+
+	DUP  shift 20
+	REDIR  shift 43
+	SREDIR  shift 22
+	.  reduce 16 (src line 43)
+
+	epilog  goto 41
+	redir  goto 42
+
+state 8
+	cmd:  IF.paren optnl iftail 
+
+	'('  shift 45
+	.  error
+
+	paren  goto 44
+
+state 9
+	cmd:  FOR.'(' word IN words ')' optnl cmd 
+	cmd:  FOR.'(' word ')' optnl cmd 
+
+	'('  shift 46
+	.  error
+
+
+state 10
+	cmd:  WHILE.paren optnl cmd 
+
+	'('  shift 45
+	.  error
+
+	paren  goto 47
+
+state 11
+	cmd:  SWITCH.'(' word ')' optnl '{' cbody '}' 
+
+	'('  shift 48
+	.  error
+
+
+state 12
+	cmd:  TWIDDLE.optcaret word words 
+	optcaret: .    (47)
+
+	'^'  shift 50
+	.  reduce 47 (src line 77)
+
+	optcaret  goto 49
+
+state 13
+	cmd:  redir.cmd 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 51
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 14
+	cmd:  assign.cmd 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 52
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 15
+	cmd:  BANG.optcaret cmd 
+	optcaret: .    (47)
+
+	'^'  shift 50
+	.  reduce 47 (src line 77)
+
+	optcaret  goto 53
+
+state 16
+	cmd:  SUBSHELL.optcaret cmd 
+	optcaret: .    (47)
+
+	'^'  shift 50
+	.  reduce 47 (src line 77)
+
+	optcaret  goto 54
+
+state 17
+	cmd:  FN.words brace 
+	cmd:  FN.words 
+	words: .    (83)
+
+	.  reduce 83 (src line 113)
+
+	words  goto 55
+
+state 18
+	assign:  first.'=' word 
+	simple:  first.    (49)
+	simple:  first.args 
+	first:  first.'^' sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'^'  shift 58
+	'='  shift 56
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 49 (src line 79)
+
+	comword  goto 63
+	redir  goto 61
+	sword  goto 62
+	word  goto 60
+	arg  goto 59
+	args  goto 57
+	keyword  goto 64
+
+state 19
+	brace:  '{'.body '}' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	body  goto 75
+	brace  goto 7
+	cmd  goto 76
+	cmdsa  goto 78
+	cmdsan  goto 77
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 20
+	redir:  DUP.    (18)
+
+	.  reduce 18 (src line 45)
+
+
+state 21
+	redir:  REDIR.word 
+	comword:  REDIR.brace 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	brace  goto 80
+	comword  goto 63
+	sword  goto 62
+	word  goto 79
+	keyword  goto 64
+
+state 22
+	redir:  SREDIR.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 83
+	keyword  goto 64
+
+state 23
+	first:  comword.    (55)
+
+	.  reduce 55 (src line 85)
+
+
+state 24
+	comword:  '$'.sword 
+	comword:  '$'.sword SUB words ')' 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 84
+	keyword  goto 64
+
+state 25
+	comword:  COUNT.sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 85
+	keyword  goto 64
+
+state 26
+	comword:  FLAT.sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 86
+	keyword  goto 64
+
+state 27
+	comword:  '`'.sword 
+	comword:  '`'.brace 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	brace  goto 88
+	comword  goto 63
+	sword  goto 87
+	keyword  goto 64
+
+state 28
+	comword:  BACKBACK.word brace 
+	comword:  BACKBACK.word sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 89
+	keyword  goto 64
+
+state 29
+	comword:  '('.nlwords ')' 
+	nlwords: .    (85)
+
+	.  reduce 85 (src line 115)
+
+	nlwords  goto 90
+
+state 30
+	comword:  WORD.    (71)
+
+	.  reduce 71 (src line 101)
+
+
+state 31
+	rc:  line end.    (1)
+
+	.  reduce 1 (src line 28)
+
+
+state 32
+	end:  END.    (3)
+
+	.  reduce 3 (src line 30)
+
+
+state 33
+	end:  '\n'.    (4)
+
+	.  reduce 4 (src line 31)
+
+
+state 34
+	rc:  error end.    (2)
+
+	.  reduce 2 (src line 29)
+
+
+state 35
+	cmdsa:  cmd ';'.    (5)
+
+	.  reduce 5 (src line 32)
+
+
+state 36
+	cmdsa:  cmd '&'.    (6)
+
+	.  reduce 6 (src line 33)
+
+
+state 37
+	cmd:  cmd ANDAND.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 91
+
+state 38
+	cmd:  cmd OROR.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 92
+
+state 39
+	cmd:  cmd PIPE.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 93
+
+state 40
+	line:  cmdsa line.    (8)
+
+	.  reduce 8 (src line 35)
+
+
+state 41
+	cmd:  brace epilog.    (31)
+
+	.  reduce 31 (src line 58)
+
+
+state 42
+	epilog:  redir.epilog 
+	epilog: .    (16)
+
+	DUP  shift 20
+	REDIR  shift 43
+	SREDIR  shift 22
+	.  reduce 16 (src line 43)
+
+	epilog  goto 94
+	redir  goto 42
+
+state 43
+	redir:  REDIR.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 79
+	keyword  goto 64
+
+state 44
+	cmd:  IF paren.optnl iftail 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 95
+
+state 45
+	paren:  '('.body ')' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	body  goto 96
+	brace  goto 7
+	cmd  goto 76
+	cmdsa  goto 78
+	cmdsan  goto 77
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 46
+	cmd:  FOR '('.word IN words ')' optnl cmd 
+	cmd:  FOR '('.word ')' optnl cmd 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 97
+	keyword  goto 64
+
+state 47
+	cmd:  WHILE paren.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 98
+
+state 48
+	cmd:  SWITCH '('.word ')' optnl '{' cbody '}' 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 99
+	keyword  goto 64
+
+state 49
+	cmd:  TWIDDLE optcaret.word words 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 100
+	keyword  goto 64
+
+state 50
+	optcaret:  '^'.    (48)
+
+	.  reduce 48 (src line 78)
+
+
+state 51
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	cmd:  redir cmd.    (41)
+
+	.  reduce 41 (src line 71)
+
+
+state 52
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	cmd:  assign cmd.    (42)
+
+	PIPE  shift 39
+	.  reduce 42 (src line 72)
+
+
+state 53
+	cmd:  BANG optcaret.cmd 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 101
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 54
+	cmd:  SUBSHELL optcaret.cmd 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 102
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 55
+	cmd:  FN words.brace 
+	cmd:  FN words.    (46)
+	words:  words.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 46 (src line 76)
+
+	brace  goto 103
+	comword  goto 63
+	sword  goto 62
+	word  goto 104
+	keyword  goto 64
+
+56: shift/reduce conflict (shift 28(0), red'n 82(1)) on BACKBACK
+56: shift/reduce conflict (shift 71(0), red'n 82(1)) on CASE
+56: shift/reduce conflict (shift 25(0), red'n 82(1)) on COUNT
+56: shift/reduce conflict (shift 26(0), red'n 82(1)) on FLAT
+56: shift/reduce conflict (shift 70(0), red'n 82(1)) on FN
+56: shift/reduce conflict (shift 65(0), red'n 82(1)) on FOR
+56: shift/reduce conflict (shift 68(0), red'n 82(1)) on IF
+56: shift/reduce conflict (shift 66(0), red'n 82(1)) on IN
+56: shift/reduce conflict (shift 81(0), red'n 82(1)) on REDIR
+56: shift/reduce conflict (shift 69(0), red'n 82(1)) on SWITCH
+56: shift/reduce conflict (shift 30(0), red'n 82(1)) on WORD
+56: shift/reduce conflict (shift 29(0), red'n 82(1)) on '('
+56: shift/reduce conflict (shift 27(0), red'n 82(1)) on '`'
+state 56
+	assign:  first '='.word 
+	keyword:  '='.    (82)
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 82 (src line 112)
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 105
+	keyword  goto 64
+
+state 57
+	simple:  first args.    (50)
+	args:  args.arg 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 50 (src line 80)
+
+	comword  goto 63
+	redir  goto 61
+	sword  goto 62
+	word  goto 60
+	arg  goto 106
+	keyword  goto 64
+
+state 58
+	first:  first '^'.sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 107
+	keyword  goto 64
+
+state 59
+	args:  arg.    (51)
+
+	.  reduce 51 (src line 81)
+
+
+state 60
+	arg:  word.    (53)
+	word:  word.'^' sword 
+
+	'^'  shift 108
+	.  reduce 53 (src line 83)
+
+
+state 61
+	arg:  redir.    (54)
+
+	.  reduce 54 (src line 84)
+
+
+state 62
+	word:  sword.    (59)
+
+	.  reduce 59 (src line 89)
+
+
+state 63
+	sword:  comword.    (57)
+
+	.  reduce 57 (src line 87)
+
+
+state 64
+	sword:  keyword.    (58)
+
+	.  reduce 58 (src line 88)
+
+
+state 65
+	keyword:  FOR.    (72)
+
+	.  reduce 72 (src line 102)
+
+
+state 66
+	keyword:  IN.    (73)
+
+	.  reduce 73 (src line 103)
+
+
+state 67
+	keyword:  WHILE.    (74)
+
+	.  reduce 74 (src line 104)
+
+
+state 68
+	keyword:  IF.    (75)
+
+	.  reduce 75 (src line 105)
+
+
+state 69
+	keyword:  SWITCH.    (76)
+
+	.  reduce 76 (src line 106)
+
+
+state 70
+	keyword:  FN.    (77)
+
+	.  reduce 77 (src line 107)
+
+
+state 71
+	keyword:  CASE.    (78)
+
+	.  reduce 78 (src line 108)
+
+
+state 72
+	keyword:  TWIDDLE.    (79)
+
+	.  reduce 79 (src line 109)
+
+
+state 73
+	keyword:  BANG.    (80)
+
+	.  reduce 80 (src line 110)
+
+
+state 74
+	keyword:  SUBSHELL.    (81)
+
+	.  reduce 81 (src line 111)
+
+
+state 75
+	brace:  '{' body.'}' 
+
+	'}'  shift 109
+	.  error
+
+
+state 76
+	cmdsa:  cmd.';' 
+	cmdsa:  cmd.'&' 
+	body:  cmd.    (9)
+	cmdsan:  cmd.'\n' 
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	'\n'  shift 110
+	';'  shift 35
+	'&'  shift 36
+	.  reduce 9 (src line 36)
+
+
+state 77
+	body:  cmdsan.body 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	body  goto 111
+	brace  goto 7
+	cmd  goto 76
+	cmdsa  goto 78
+	cmdsan  goto 77
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 78
+	cmdsan:  cmdsa.    (11)
+
+	.  reduce 11 (src line 38)
+
+
+state 79
+	redir:  REDIR word.    (19)
+	word:  word.'^' sword 
+
+	'^'  shift 108
+	.  reduce 19 (src line 46)
+
+
+state 80
+	comword:  REDIR brace.    (70)
+
+	.  reduce 70 (src line 100)
+
+
+state 81
+	comword:  REDIR.brace 
+
+	'{'  shift 19
+	.  error
+
+	brace  goto 80
+
+state 82
+	keyword:  '='.    (82)
+
+	.  reduce 82 (src line 112)
+
+
+state 83
+	redir:  SREDIR word.    (20)
+	word:  word.'^' sword 
+
+	'^'  shift 108
+	.  reduce 20 (src line 47)
+
+
+state 84
+	comword:  '$' sword.    (61)
+	comword:  '$' sword.SUB words ')' 
+
+	SUB  shift 112
+	.  reduce 61 (src line 91)
+
+
+state 85
+	comword:  COUNT sword.    (63)
+
+	.  reduce 63 (src line 93)
+
+
+state 86
+	comword:  FLAT sword.    (64)
+
+	.  reduce 64 (src line 94)
+
+
+state 87
+	comword:  '`' sword.    (65)
+
+	.  reduce 65 (src line 95)
+
+
+state 88
+	comword:  '`' brace.    (66)
+
+	.  reduce 66 (src line 96)
+
+
+state 89
+	word:  word.'^' sword 
+	comword:  BACKBACK word.brace 
+	comword:  BACKBACK word.sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'^'  shift 108
+	'='  shift 82
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	brace  goto 113
+	comword  goto 63
+	sword  goto 114
+	keyword  goto 64
+
+state 90
+	comword:  '(' nlwords.')' 
+	nlwords:  nlwords.'\n' 
+	nlwords:  nlwords.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	')'  shift 115
+	'\n'  shift 116
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 117
+	keyword  goto 64
+
+state 91
+	cmd:  cmd ANDAND optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 118
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 92
+	cmd:  cmd OROR optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 120
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 93
+	cmd:  cmd PIPE optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 121
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 94
+	epilog:  redir epilog.    (17)
+
+	.  reduce 17 (src line 44)
+
+
+state 95
+	cmd:  IF paren optnl.iftail 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 123
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+	iftail  goto 122
+
+state 96
+	paren:  '(' body.')' 
+
+	')'  shift 124
+	.  error
+
+
+state 97
+	cmd:  FOR '(' word.IN words ')' optnl cmd 
+	cmd:  FOR '(' word.')' optnl cmd 
+	word:  word.'^' sword 
+
+	IN  shift 125
+	'^'  shift 108
+	')'  shift 126
+	.  error
+
+
+state 98
+	cmd:  WHILE paren optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 127
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 99
+	cmd:  SWITCH '(' word.')' optnl '{' cbody '}' 
+	word:  word.'^' sword 
+
+	'^'  shift 108
+	')'  shift 128
+	.  error
+
+
+state 100
+	cmd:  TWIDDLE optcaret word.words 
+	word:  word.'^' sword 
+	words: .    (83)
+
+	'^'  shift 108
+	.  reduce 83 (src line 113)
+
+	words  goto 129
+
+state 101
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	cmd:  BANG optcaret cmd.    (43)
+
+	PIPE  shift 39
+	.  reduce 43 (src line 73)
+
+
+state 102
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	cmd:  SUBSHELL optcaret cmd.    (44)
+
+	PIPE  shift 39
+	.  reduce 44 (src line 74)
+
+
+state 103
+	cmd:  FN words brace.    (45)
+
+	.  reduce 45 (src line 75)
+
+
+state 104
+	word:  word.'^' sword 
+	words:  words word.    (84)
+
+	'^'  shift 108
+	.  reduce 84 (src line 114)
+
+
+state 105
+	assign:  first '=' word.    (15)
+	word:  word.'^' sword 
+
+	'^'  shift 108
+	.  reduce 15 (src line 42)
+
+
+state 106
+	args:  args arg.    (52)
+
+	.  reduce 52 (src line 82)
+
+
+state 107
+	first:  first '^' sword.    (56)
+
+	.  reduce 56 (src line 86)
+
+
+state 108
+	word:  word '^'.sword 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 130
+	keyword  goto 64
+
+state 109
+	brace:  '{' body '}'.    (13)
+
+	.  reduce 13 (src line 40)
+
+
+state 110
+	cmdsan:  cmd '\n'.    (12)
+
+	.  reduce 12 (src line 39)
+
+
+state 111
+	body:  cmdsan body.    (10)
+
+	.  reduce 10 (src line 37)
+
+
+state 112
+	comword:  '$' sword SUB.words ')' 
+	words: .    (83)
+
+	.  reduce 83 (src line 113)
+
+	words  goto 131
+
+state 113
+	comword:  BACKBACK word brace.    (67)
+
+	.  reduce 67 (src line 97)
+
+
+state 114
+	comword:  BACKBACK word sword.    (68)
+
+	.  reduce 68 (src line 98)
+
+
+state 115
+	comword:  '(' nlwords ')'.    (69)
+
+	.  reduce 69 (src line 99)
+
+
+state 116
+	nlwords:  nlwords '\n'.    (86)
+
+	.  reduce 86 (src line 116)
+
+
+state 117
+	word:  word.'^' sword 
+	nlwords:  nlwords word.    (87)
+
+	'^'  shift 108
+	.  reduce 87 (src line 117)
+
+
+state 118
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd ANDAND optnl cmd.    (38)
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	PIPE  shift 39
+	.  reduce 38 (src line 68)
+
+
+state 119
+	optnl:  optnl '\n'.    (89)
+
+	.  reduce 89 (src line 119)
+
+
+state 120
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd OROR optnl cmd.    (39)
+	cmd:  cmd.PIPE optnl cmd 
+
+	PIPE  shift 39
+	.  reduce 39 (src line 69)
+
+
+state 121
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	cmd:  cmd PIPE optnl cmd.    (40)
+
+	.  reduce 40 (src line 70)
+
+
+state 122
+	cmd:  IF paren optnl iftail.    (32)
+
+	.  reduce 32 (src line 59)
+
+
+state 123
+	iftail:  cmd.else 
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+	else: .    (27)
+
+	ANDAND  shift 37
+	ELSE  shift 133
+	OROR  shift 38
+	PIPE  shift 39
+	.  reduce 27 (src line 54)
+
+	else  goto 132
+
+state 124
+	paren:  '(' body ')'.    (14)
+
+	.  reduce 14 (src line 41)
+
+
+state 125
+	cmd:  FOR '(' word IN.words ')' optnl cmd 
+	words: .    (83)
+
+	.  reduce 83 (src line 113)
+
+	words  goto 134
+
+state 126
+	cmd:  FOR '(' word ')'.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 135
+
+state 127
+	cmd:  WHILE paren optnl cmd.    (35)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	.  reduce 35 (src line 64)
+
+
+state 128
+	cmd:  SWITCH '(' word ')'.optnl '{' cbody '}' 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 136
+
+state 129
+	cmd:  TWIDDLE optcaret word words.    (37)
+	words:  words.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 37 (src line 67)
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 104
+	keyword  goto 64
+
+state 130
+	word:  word '^' sword.    (60)
+
+	.  reduce 60 (src line 90)
+
+
+state 131
+	comword:  '$' sword SUB words.')' 
+	words:  words.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	')'  shift 137
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 104
+	keyword  goto 64
+
+state 132
+	iftail:  cmd else.    (26)
+
+	.  reduce 26 (src line 53)
+
+
+state 133
+	else:  ELSE.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 138
+
+state 134
+	cmd:  FOR '(' word IN words.')' optnl cmd 
+	words:  words.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	')'  shift 139
+	'$'  shift 24
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 104
+	keyword  goto 64
+
+state 135
+	cmd:  FOR '(' word ')' optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 140
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 136
+	cmd:  SWITCH '(' word ')' optnl.'{' cbody '}' 
+	optnl:  optnl.'\n' 
+
+	'\n'  shift 119
+	'{'  shift 141
+	.  error
+
+
+state 137
+	comword:  '$' sword SUB words ')'.    (62)
+
+	.  reduce 62 (src line 92)
+
+
+state 138
+	else:  ELSE optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 142
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 139
+	cmd:  FOR '(' word IN words ')'.optnl cmd 
+	optnl: .    (88)
+
+	.  reduce 88 (src line 118)
+
+	optnl  goto 143
+
+state 140
+	cmd:  FOR '(' word ')' optnl cmd.    (34)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	.  reduce 34 (src line 62)
+
+
+state 141
+	cmd:  SWITCH '(' word ')' optnl '{'.cbody '}' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	CASE  shift 148
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	case  goto 146
+	cbody  goto 144
+	cmd  goto 145
+	cmdsa  goto 78
+	cmdsan  goto 147
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 142
+	else:  ELSE optnl cmd.    (28)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	.  reduce 28 (src line 55)
+
+
+state 143
+	cmd:  FOR '(' word IN words ')' optnl.cmd 
+	optnl:  optnl.'\n' 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'\n'  shift 119
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	cmd  goto 149
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 144
+	cmd:  SWITCH '(' word ')' optnl '{' cbody.'}' 
+
+	'}'  shift 150
+	.  error
+
+
+state 145
+	cmdsa:  cmd.';' 
+	cmdsa:  cmd.'&' 
+	cmdsan:  cmd.'\n' 
+	cbody:  cmd.    (23)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	'\n'  shift 110
+	';'  shift 35
+	'&'  shift 36
+	.  reduce 23 (src line 50)
+
+
+state 146
+	cbody:  case.cbody 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	CASE  shift 148
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	case  goto 146
+	cbody  goto 151
+	cmd  goto 145
+	cmdsa  goto 78
+	cmdsan  goto 147
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 147
+	cbody:  cmdsan.cbody 
+	cmd: .    (29)
+
+	BACKBACK  shift 28
+	BANG  shift 15
+	CASE  shift 148
+	COUNT  shift 25
+	DUP  shift 20
+	FLAT  shift 26
+	FN  shift 17
+	FOR  shift 9
+	IF  shift 8
+	REDIR  shift 21
+	SREDIR  shift 22
+	SUBSHELL  shift 16
+	SWITCH  shift 11
+	TWIDDLE  shift 12
+	WHILE  shift 10
+	WORD  shift 30
+	'$'  shift 24
+	'{'  shift 19
+	'('  shift 29
+	'`'  shift 27
+	.  reduce 29 (src line 56)
+
+	assign  goto 14
+	brace  goto 7
+	case  goto 146
+	cbody  goto 152
+	cmd  goto 145
+	cmdsa  goto 78
+	cmdsan  goto 147
+	comword  goto 23
+	first  goto 18
+	redir  goto 13
+	simple  goto 6
+
+state 148
+	case:  CASE.words ';' 
+	case:  CASE.words '\n' 
+	words: .    (83)
+
+	.  reduce 83 (src line 113)
+
+	words  goto 153
+
+state 149
+	cmd:  FOR '(' word IN words ')' optnl cmd.    (33)
+	cmd:  cmd.ANDAND optnl cmd 
+	cmd:  cmd.OROR optnl cmd 
+	cmd:  cmd.PIPE optnl cmd 
+
+	ANDAND  shift 37
+	OROR  shift 38
+	PIPE  shift 39
+	.  reduce 33 (src line 60)
+
+
+state 150
+	cmd:  SWITCH '(' word ')' optnl '{' cbody '}'.    (36)
+
+	.  reduce 36 (src line 65)
+
+
+state 151
+	cbody:  case cbody.    (24)
+
+	.  reduce 24 (src line 51)
+
+
+state 152
+	cbody:  cmdsan cbody.    (25)
+
+	.  reduce 25 (src line 52)
+
+
+state 153
+	case:  CASE words.';' 
+	case:  CASE words.'\n' 
+	words:  words.word 
+
+	BACKBACK  shift 28
+	BANG  shift 73
+	CASE  shift 71
+	COUNT  shift 25
+	FLAT  shift 26
+	FN  shift 70
+	FOR  shift 65
+	IF  shift 68
+	IN  shift 66
+	REDIR  shift 81
+	SUBSHELL  shift 74
+	SWITCH  shift 69
+	TWIDDLE  shift 72
+	WHILE  shift 67
+	WORD  shift 30
+	'='  shift 82
+	'\n'  shift 155
+	'$'  shift 24
+	';'  shift 154
+	'('  shift 29
+	'`'  shift 27
+	.  error
+
+	comword  goto 63
+	sword  goto 62
+	word  goto 104
+	keyword  goto 64
+
+state 154
+	case:  CASE words ';'.    (21)
+
+	.  reduce 21 (src line 48)
+
+
+state 155
+	case:  CASE words '\n'.    (22)
+
+	.  reduce 22 (src line 49)
+
+
+39 terminals, 29 nonterminals
+90 grammar rules, 156/16000 states
+13 shift/reduce, 0 reduce/reduce conflicts reported
+78 working sets used
+memory: parser 325/240000
+131 extra closures
+918 shift entries, 8 exceptions
+120 goto entries
+169 entries saved by goto default
+Optimizer space used: output 620/240000
+620 table entries, 177 zero
+maximum spread: 39, maximum offset: 148

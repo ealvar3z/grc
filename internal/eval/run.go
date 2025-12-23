@@ -793,7 +793,27 @@ func applyRedirs(p *ExecPlan, stdin *io.Reader, stdout, stderr *io.Writer) ([]*o
 			}
 			files = append(files, f)
 		case "<<", "<<<":
-			return files, fmt.Errorf("heredoc not implemented")
+			sep := ""
+			if r.Op == "<<<" {
+				sep = " "
+			}
+			data := strings.Join(r.Target, sep)
+			pr, pw, err := os.Pipe()
+			if err != nil {
+				return files, err
+			}
+			if err := assignFD(fd, stdin, stdout, stderr, pr); err != nil {
+				_ = pr.Close()
+				_ = pw.Close()
+				return files, err
+			}
+			files = append(files, pr)
+			go func() {
+				if data != "" {
+					_, _ = pw.Write([]byte(data))
+				}
+				_ = pw.Close()
+			}()
 		default:
 			return files, fmt.Errorf("unsupported redirection: %s", r.Op)
 		}

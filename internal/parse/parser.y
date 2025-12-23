@@ -44,7 +44,7 @@ epilog:				{$$=nil;}
 |	redir epilog		{$$=L(KRedir, $1, $2);}
 redir:	DUP			{$$=$1;}
 |	REDIR word		{$$=$1; $$.Right = $2;}
-|	SREDIR word		{$$=$1; $$.Right = $2;}
+|	SREDIR word		{$$=$1; if $$.Right == nil { $$.Right = $2; }}
 case:	CASE words ';'		{$$=N(KCase, $2, nil);}
 |	CASE words '\n'		{$$=N(KCase, $2, nil);}
 cbody:	cmd			{$$=N(KCbody, $1, nil);}

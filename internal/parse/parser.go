@@ -715,7 +715,9 @@ grcdefault:
 //line internal/parse/parser.y:47
 		{
 			grcVAL.node = grcDollar[1].node
-			grcVAL.node.Right = grcDollar[2].node
+			if grcVAL.node.Right == nil {
+				grcVAL.node.Right = grcDollar[2].node
+			}
 		}
 	case 21:
 		grcDollar = grcS[grcpt-3 : grcpt+1]
