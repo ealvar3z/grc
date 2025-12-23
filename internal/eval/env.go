@@ -71,6 +71,22 @@ func (e *Env) Snapshot() map[string][]string {
 	return out
 }
 
+// FuncNames returns function names visible from this env chain.
+func (e *Env) FuncNames() []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for cur := e; cur != nil; cur = cur.parent {
+		for name := range cur.funcs {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // Set assigns the variable to the provided list.
 func (e *Env) Set(name string, vals []string) {
 	if e == nil {

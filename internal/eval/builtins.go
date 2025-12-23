@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -17,22 +18,32 @@ type Builtin func(stdin io.Reader, stdout, stderr io.Writer, args []string, r *R
 
 func defaultBuiltins() map[string]Builtin {
 	return map[string]Builtin{
-		"apid": builtinAPID,
-		"bg":   builtinBG,
-		"cd":   builtinCD,
-		".":    builtinDot,
-		"exec": builtinExec,
-		"fg":   builtinFG,
-		"jobs": builtinJobs,
+		"apid":    builtinAPID,
+		"bg":      builtinBG,
+		"cd":      builtinCD,
+		".":       builtinDot,
+		"exec":    builtinExec,
+		"fg":      builtinFG,
+		"jobs":    builtinJobs,
 		"newpgrp": builtinNewpgrp,
-		"pwd":  builtinPWD,
-		"exit": builtinExit,
-		"eval": builtinEval,
-		"which": builtinWhich,
-		"shift": builtinShift,
-		"return": builtinReturn,
-		"wait": builtinWait,
+		"pwd":     builtinPWD,
+		"exit":    builtinExit,
+		"eval":    builtinEval,
+		"which":   builtinWhich,
+		"shift":   builtinShift,
+		"return":  builtinReturn,
+		"wait":    builtinWait,
 	}
+}
+
+// BuiltinNames returns the default builtin command names.
+func BuiltinNames() []string {
+	names := make([]string, 0, len(defaultBuiltins()))
+	for name := range defaultBuiltins() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func builtinCD(stdin io.Reader, stdout, stderr io.Writer, args []string, r *Runner) int {

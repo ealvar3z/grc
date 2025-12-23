@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -61,6 +63,9 @@ func runScript(opts options, env *eval.Env, rd io.Reader) {
 		os.Exit(0)
 	}
 	runner := &eval.Runner{Env: env, Trace: opts.trace, TraceWriter: os.Stderr}
+	if self, err := os.Executable(); err == nil {
+		runner.SelfPath = self
+	}
 	result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
 	if runner.ExitRequested() {
 		os.Exit(runner.ExitCode())
@@ -93,6 +98,9 @@ func runDotFile(opts options, env *eval.Env, args []string) {
 		os.Exit(0)
 	}
 	runner := &eval.Runner{Env: env, Trace: opts.trace, TraceWriter: os.Stderr}
+	if self, err := os.Executable(); err == nil {
+		runner.SelfPath = self
+	}
 	status := runner.RunPlan(
 		&eval.ExecPlan{Kind: eval.PlanCmd, Argv: append([]string{"."}, args...)},
 		os.Stdin,
@@ -121,6 +129,12 @@ func runInteractive(opts options, env *eval.Env) {
 		Trace:       opts.trace,
 		TraceWriter: os.Stderr,
 	}
+	if self, err := os.Executable(); err == nil {
+		runner.SelfPath = self
+	}
+	line.SetCompleter(func(input string) []string {
+		return completeLine(input, env, runner)
+	})
 	runner.JobControl = false
 	historyPath := historyPathFromEnv(env)
 	var historyLines []string
@@ -202,6 +216,9 @@ func runInteractive(opts options, env *eval.Env) {
 		result := runner.RunPlan(plan, os.Stdin, os.Stdout, os.Stderr)
 		line = liner.NewLiner()
 		line.SetCtrlCAborts(true)
+		line.SetCompleter(func(input string) []string {
+			return completeLine(input, env, runner)
+		})
 		if historyPath != "" {
 			if f, err := os.Open(historyPath); err == nil {
 				_, _ = line.ReadHistory(f)
@@ -402,6 +419,209 @@ func needsMoreInput(s string) bool {
 		return true
 	}
 	return brace > 0 || paren > 0 || inQuote
+}
+
+func completeLine(line string, env *eval.Env, runner *eval.Runner) []string {
+	if line == "" {
+		return nil
+	}
+	if strings.Count(line, "'")%2 == 1 {
+		return nil
+	}
+	token, start := lastToken(line)
+	if token == "" {
+		return nil
+	}
+	if strings.HasPrefix(token, "$") {
+		return completeVars(token, env)
+	}
+	if strings.Contains(token, "/") || strings.HasPrefix(token, ".") {
+		return completePath(token)
+	}
+	if isCommandPosition(line, start) {
+		return completeCommand(token, env, runner)
+	}
+	return completePath(token)
+}
+
+func lastToken(line string) (string, int) {
+	i := len(line)
+	for i > 0 {
+		switch line[i-1] {
+		case ' ', '\t', '\n':
+			return line[i:], i
+		}
+		i--
+	}
+	return line, 0
+}
+
+func isCommandPosition(line string, start int) bool {
+	i := start - 1
+	for i >= 0 {
+		switch line[i] {
+		case ' ', '\t', '\n':
+			i--
+			continue
+		case ';', '|', '&', '(', ')', '{', '}':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func completeVars(prefix string, env *eval.Env) []string {
+	if env == nil {
+		return nil
+	}
+	raw := strings.TrimPrefix(prefix, "$")
+	var out []string
+	for name := range env.Snapshot() {
+		if !strings.HasPrefix(name, raw) {
+			continue
+		}
+		out = append(out, "$"+name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func completeCommand(prefix string, env *eval.Env, runner *eval.Runner) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	var builtins []string
+	if runner != nil && runner.Builtins != nil {
+		for name := range runner.Builtins {
+			builtins = append(builtins, name)
+		}
+	} else {
+		builtins = eval.BuiltinNames()
+	}
+	for _, name := range builtins {
+		if strings.HasPrefix(name, prefix) {
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	if env != nil {
+		for _, name := range env.FuncNames() {
+			if !strings.HasPrefix(name, prefix) {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	for _, name := range completePathCommands(prefix, env) {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func completePathCommands(prefix string, env *eval.Env) []string {
+	dirs := pathListFromEnv(env)
+	seen := make(map[string]struct{})
+	var out []string
+	for _, dir := range dirs {
+		if dir == "" {
+			dir = "."
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if !strings.HasPrefix(name, prefix) {
+				continue
+			}
+			if strings.HasPrefix(name, ".") && !strings.HasPrefix(prefix, ".") {
+				continue
+			}
+			full := filepath.Join(dir, name)
+			if !isExecutable(full, entry) {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func completePath(prefix string) []string {
+	dir, base := filepath.Split(prefix)
+	searchDir := dir
+	if searchDir == "" {
+		searchDir = "."
+	}
+	entries, err := os.ReadDir(searchDir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(base, ".") {
+			continue
+		}
+		candidate := name
+		if dir != "" {
+			candidate = dir + name
+		}
+		if entry.IsDir() {
+			candidate += string(os.PathSeparator)
+		}
+		out = append(out, candidate)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func isExecutable(path string, entry os.DirEntry) bool {
+	info, err := entry.Info()
+	if err != nil {
+		return false
+	}
+	if !info.Mode().IsRegular() {
+		return false
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		return false
+	}
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	return true
+}
+
+func pathListFromEnv(env *eval.Env) []string {
+	if env != nil {
+		if vals := env.Get("path"); len(vals) > 0 {
+			return vals
+		}
+	}
+	if p := os.Getenv("PATH"); p != "" {
+		return strings.Split(p, string(os.PathListSeparator))
+	}
+	return []string{""}
 }
 
 func initEnv(env *eval.Env) {

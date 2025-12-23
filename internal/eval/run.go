@@ -26,6 +26,7 @@ type Runner struct {
 	TTYFD          int
 	ShellPgid      int
 	ForegroundPgid int
+	SelfPath       string
 	returnRequested bool
 	returnCode      int
 	returnDepth     int
@@ -341,8 +342,7 @@ func (r *Runner) runStage(p *ExecPlan, stdin io.Reader, stdout, stderr io.Writer
 		}
 		return 0
 	case PlanSubshell:
-		child := NewChild(r.Env)
-		return r.runASTWithEnv(child, p.SubBody, stdin, stdout, stderr)
+		return r.runSubshell(p.SubBody, stdin, stdout, stderr)
 	case PlanTwiddle:
 		return r.runMatch(p)
 	case PlanFnRm:
@@ -493,6 +493,38 @@ func (r *Runner) runFuncCall(def FuncDef, argv []string, p *ExecPlan, env *Env, 
 	r.returnDepth--
 	r.Env = origEnv
 	return status
+}
+
+func (r *Runner) runSubshell(n *parse.Node, stdin io.Reader, stdout, stderr io.Writer) int {
+	if r == nil {
+		return 1
+	}
+	childEnv := NewChild(r.Env)
+	if r.SelfPath == "" {
+		return r.runASTWithEnv(childEnv, n, stdin, stdout, stderr)
+	}
+	src, err := parse.Format(n)
+	if err != nil {
+		return r.runASTWithEnv(childEnv, n, stdin, stdout, stderr)
+	}
+	cmd := exec.Command(r.SelfPath, "-c", src)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Env = buildExecEnv(childEnv)
+	if r.JobControl {
+		cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+	}
+	if err := cmd.Start(); err != nil {
+		return exitStatus(err)
+	}
+	if r.JobControl {
+		r.attachForeground(cmd.Process.Pid)
+		err = cmd.Wait()
+		r.restoreForeground()
+		return exitStatus(err)
+	}
+	return exitStatus(cmd.Wait())
 }
 
 func (r *Runner) runAST(n *parse.Node, stdin io.Reader, stdout, stderr io.Writer) int {

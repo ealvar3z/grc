@@ -2,7 +2,7 @@ Daily-driver bundle (rc parity)
 
 - [x] External command lookup honors $path for all execs
 - [x] Add builtin: which (inspect $path)
-- [ ] Subshell executes in a forked process (rc-style isolation)
+- [x] Subshell executes in a forked process (rc-style isolation)
 - [x] Add builtin: wait (for background jobs)
 - [x] Add builtin: shift
 - [x] Add builtin: return (function exit)
